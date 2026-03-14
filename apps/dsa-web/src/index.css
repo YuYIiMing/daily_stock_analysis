@@ -538,9 +538,32 @@ body {
   font-size: 13px;
 }
 
-.btn-secondary:hover {
-  border-color: var(--border-accent);
-  color: var(--color-cyan);
+.btn-purple {
+  background: linear-gradient(135deg, var(--color-purple) 0%, var(--color-purple-dim) 100%);
+  color: #fff;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+}
+
+.btn-purple:hover {
+  box-shadow: 0 0 20px var(--color-purple-glow);
+  transform: translateY(-1px);
+}
+
+.btn-purple:active {
+  transform: translateY(0);
+}
+
+.btn-purple:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 /* ============ 徽章样式 ============ */
@@ -736,4 +759,52 @@ body {
   .dock-safe-area {
     padding-left: 88px;
   }
+}
+
+/* ============ Modal 弹窗样式 ============ */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.modal-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  border: none;
+  cursor: pointer;
+}
+
+.modal-box {
+  position: relative;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 480px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  z-index: 10;
+  animation: slideUp 0.3s ease-out;
+}
+
+.modal-action {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
 }

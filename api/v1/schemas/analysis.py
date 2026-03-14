@@ -218,3 +218,39 @@ class DuplicateTaskErrorResponse(BaseModel):
                 "existing_task_id": "abc123def456"
             }
         }
+
+
+class BatchTaskAccepted(BaseModel):
+    """批量分析任务接受响应"""
+    
+    task_id: str = Field(..., description="批量分析任务 ID")
+    status: str = Field(..., description="任务状态", pattern="^(pending|processing)$")
+    stock_count: int = Field(..., description="待分析股票数量")
+    message: Optional[str] = Field(None, description="提示信息")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "task_id": "batch_abc123",
+                "status": "pending",
+                "stock_count": 10,
+                "message": "批量分析任务已加入队列"
+            }
+        }
+
+
+class DuplicateBatchTaskErrorResponse(BaseModel):
+    """重复批量任务错误响应模型"""
+    
+    error: str = Field("duplicate_batch_task", description="错误类型")
+    message: str = Field(..., description="错误信息")
+    existing_task_id: str = Field(..., description="已存在的批量任务 ID")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "error": "duplicate_batch_task",
+                "message": "已有批量分析任务正在进行中",
+                "existing_task_id": "batch_abc123"
+            }
+        }

@@ -125,6 +125,41 @@ export const analysisApi = {
     const baseUrl = apiClient.defaults.baseURL || '';
     return `${baseUrl}/api/v1/analysis/tasks/stream`;
   },
+
+  /**
+   * 触发批量分析
+   * @param mode 分析模式: stocks_only(仅个股), market_only(仅大盘), full(全部)
+   * @returns 批量任务接受响应
+   */
+  triggerBatch: async (mode: string = 'full'): Promise<{ taskId: string; status: string; stockCount: number; message?: string }> => {
+    const response = await apiClient.post<Record<string, unknown>>(
+      '/api/v1/analysis/batch',
+      {},
+      {
+        params: { mode },
+        validateStatus: (status) => status === 202 || status === 400 || status === 409,
+      }
+    );
+
+    if (response.status === 400) {
+      const errorData = toCamelCase<{
+        error: string;
+        message: string;
+      }>(response.data);
+      throw new Error(errorData.message);
+    }
+
+    if (response.status === 409) {
+      const errorData = toCamelCase<{
+        error: string;
+        message: string;
+        existingTaskId: string;
+      }>(response.data);
+      throw new Error(errorData.message);
+    }
+
+    return toCamelCase<{ taskId: string; status: string; stockCount: number; message?: string }>(response.data);
+  },
 };
 
 // ============ 自定义错误类 ============

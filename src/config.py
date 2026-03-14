@@ -234,7 +234,7 @@ class Config:
     serverchan3_sendkey: Optional[str] = None  # Server酱3 SendKey
 
     # 分析间隔时间（秒）- 用于避免API限流
-    analysis_delay: float = 0.0  # 个股分析与大盘分析之间的延迟
+    analysis_delay: float = 10.0  # 个股分析与大盘分析之间的延迟，默认10秒
 
     # Merge stock + market report into one notification (Issue #190)
     merge_email_notification: bool = False
@@ -692,7 +692,7 @@ class Config:
             report_integrity_enabled=os.getenv('REPORT_INTEGRITY_ENABLED', 'true').lower() == 'true',
             report_integrity_retry=int(os.getenv('REPORT_INTEGRITY_RETRY', '1')),
             report_history_compare_n=int(os.getenv('REPORT_HISTORY_COMPARE_N', '0')),
-            analysis_delay=float(os.getenv('ANALYSIS_DELAY', '0')),
+            analysis_delay=float(os.getenv('ANALYSIS_DELAY', '10')),
             merge_email_notification=os.getenv('MERGE_EMAIL_NOTIFICATION', 'false').lower() == 'true',
             feishu_max_bytes=int(os.getenv('FEISHU_MAX_BYTES', '20000')),
             wechat_max_bytes=wechat_max_bytes,
