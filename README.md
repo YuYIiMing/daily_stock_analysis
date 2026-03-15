@@ -252,6 +252,32 @@ python main.py
 
 > 📖 完整环境变量、定时任务配置请参考 [完整配置指南](docs/full-guide.md)
 
+### 定时任务配置要点
+
+**环境变量**（在 `.env` 文件中设置）：
+```bash
+# 启用定时任务
+SCHEDULE_ENABLED=true
+# 每日执行时间 (24小时制)
+SCHEDULE_TIME=16:30
+# 启动时是否立即执行一次
+SCHEDULE_RUN_IMMEDIATELY=false
+# 是否启用交易日检查 (true: 仅交易日执行，false: 每日执行)
+TRADING_DAY_CHECK_ENABLED=true
+```
+
+**关键特性**：
+- 定时任务默认遵循交易日检查，非交易日自动跳过
+- scheduler.py 增强日志输出，显示配置状态便于调试
+- 手动触发（Web UI 或命令行 `--force-run`）可跳过交易日检查
+- 防重复提交机制，任何模式的批量任务互斥（返回 409 冲突）
+
+**故障排查**：
+1. **定时任务不执行**：检查容器日志 `docker logs stock-analyzer`，确认调度器已启动且时间正确
+2. **交易日检查跳过分析**：日志会显示"今日所有相关市场均为非交易日，跳过执行"
+3. **强制执行**：命令行使用 `--force-run` 参数或设置 `TRADING_DAY_CHECK_ENABLED=false`
+4. **日志查看**：定时任务执行详情可在 `logs/stock_analysis_*.log` 中查看
+
 
 ## 🖥️ Web 界面
 

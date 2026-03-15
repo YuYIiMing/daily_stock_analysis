@@ -100,49 +100,56 @@ class NewsIntelResponse(BaseModel):
 class ReportMeta(BaseModel):
     """报告元信息"""
 
-    model_config = ConfigDict(protected_namespaces=("model_validate", "model_dump"))
+    model_config = ConfigDict(populate_by_name=True)
 
     id: Optional[int] = Field(None, description="分析历史记录主键 ID（仅历史报告有此字段）")
     query_id: str = Field(..., description="分析记录关联 query_id（批量分析时重复）")
-    stock_code: str = Field(..., description="股票代码")
-    stock_name: Optional[str] = Field(None, description="股票名称")
-    report_type: Optional[str] = Field(None, description="报告类型")
-    created_at: Optional[str] = Field(None, description="创建时间")
-    current_price: Optional[float] = Field(None, description="分析时股价")
-    change_pct: Optional[float] = Field(None, description="分析时涨跌幅(%)")
-    model_used: Optional[str] = Field(None, description="分析使用的 LLM 模型")
+    stock_code: str = Field(..., description="股票代码", alias="stockCode")
+    stock_name: Optional[str] = Field(None, description="股票名称", alias="stockName")
+    report_type: Optional[str] = Field(None, description="报告类型", alias="reportType")
+    created_at: Optional[str] = Field(None, description="创建时间", alias="createdAt")
+    current_price: Optional[float] = Field(None, description="分析时股价", alias="currentPrice")
+    change_pct: Optional[float] = Field(None, description="分析时涨跌幅(%)", alias="changePct")
+    model_used: Optional[str] = Field(None, description="分析使用的 LLM 模型", alias="modelUsed")
 
 
 class ReportSummary(BaseModel):
     """报告概览区"""
     
-    analysis_summary: Optional[str] = Field(None, description="关键结论")
-    operation_advice: Optional[str] = Field(None, description="操作建议")
-    trend_prediction: Optional[str] = Field(None, description="趋势预测")
+    model_config = ConfigDict(populate_by_name=True)
+    
+    analysis_summary: Optional[str] = Field(None, description="关键结论", alias="analysisSummary")
+    operation_advice: Optional[str] = Field(None, description="操作建议", alias="operationAdvice")
+    trend_prediction: Optional[str] = Field(None, description="趋势预测", alias="trendPrediction")
     sentiment_score: Optional[int] = Field(
         None, 
         description="情绪评分 (0-100)",
         ge=0,
-        le=100
+        le=100,
+        alias="sentimentScore"
     )
-    sentiment_label: Optional[str] = Field(None, description="情绪标签")
+    sentiment_label: Optional[str] = Field(None, description="情绪标签", alias="sentimentLabel")
 
 
 class ReportStrategy(BaseModel):
     """策略点位区"""
     
-    ideal_buy: Optional[str] = Field(None, description="理想买入价")
-    secondary_buy: Optional[str] = Field(None, description="第二买入价")
-    stop_loss: Optional[str] = Field(None, description="止损价")
-    take_profit: Optional[str] = Field(None, description="止盈价")
+    model_config = ConfigDict(populate_by_name=True)
+    
+    ideal_buy: Optional[str] = Field(None, description="理想买入价", alias="idealBuy")
+    secondary_buy: Optional[str] = Field(None, description="第二买入价", alias="secondaryBuy")
+    stop_loss: Optional[str] = Field(None, description="止损价", alias="stopLoss")
+    take_profit: Optional[str] = Field(None, description="止盈价", alias="takeProfit")
 
 
 class ReportDetails(BaseModel):
     """报告详情区"""
     
-    news_content: Optional[str] = Field(None, description="新闻摘要")
-    raw_result: Optional[Any] = Field(None, description="原始分析结果（JSON）")
-    context_snapshot: Optional[Any] = Field(None, description="分析时上下文快照（JSON）")
+    model_config = ConfigDict(populate_by_name=True)
+    
+    news_content: Optional[str] = Field(None, description="新闻摘要", alias="newsContent")
+    raw_result: Optional[Any] = Field(None, description="原始分析结果（JSON）", alias="rawResult")
+    context_snapshot: Optional[Any] = Field(None, description="分析时上下文快照（JSON）", alias="contextSnapshot")
 
 
 class AnalysisReport(BaseModel):
@@ -190,5 +197,20 @@ class MarkdownReportResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "content": "# 📊 贵州茅台 (600519) 分析报告\n\n> 分析日期：**2024-01-01**\n\n..."
+            }
+        }
+
+
+class DeleteResponse(BaseModel):
+    """删除操作响应"""
+
+    success: bool = Field(..., description="操作是否成功")
+    message: str = Field(..., description="操作结果消息")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "分析记录已删除"
             }
         }

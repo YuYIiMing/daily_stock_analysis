@@ -1478,6 +1478,50 @@ class DatabaseManager:
             )
             return result.rowcount
 
+    def delete_analysis_history(self, record_id: int) -> Tuple[bool, int]:
+        """
+        Delete an analysis history record and its associated backtest results.
+
+        This performs a cascading delete:
+        1. Delete associated backtest_results records
+        2. Delete the analysis_history record
+
+        Note: news_intel records are NOT deleted (they may be shared across analyses).
+
+        Args:
+            record_id: The primary key ID of the analysis_history record.
+
+        Returns:
+            Tuple of (success, deleted_count):
+            - success: True if the record was found and deleted
+            - deleted_count: Number of analysis_history records deleted (0 or 1)
+        """
+        with self.session_scope() as session:
+            try:
+                record = session.execute(
+                    select(AnalysisHistory).where(AnalysisHistory.id == record_id)
+                ).scalar_one_or_none()
+
+                if record is None:
+                    return False, 0
+
+                backtest_deleted = session.execute(
+                    delete(BacktestResult).where(BacktestResult.analysis_history_id == record_id)
+                )
+                logger.info(
+                    f"Deleted {backtest_deleted.rowcount} backtest_results for analysis_history_id={record_id}"
+                )
+
+                session.delete(record)
+                session.commit()
+
+                return True, 1
+
+            except Exception as e:
+                session.rollback()
+                logger.error(f"delete_analysis_history failed for record_id={record_id}: {e}")
+                raise
+
     # ------------------------------------------------------------------
     # LLM usage tracking
     # ------------------------------------------------------------------

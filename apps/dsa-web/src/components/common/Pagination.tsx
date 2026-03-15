@@ -12,7 +12,7 @@ const PageButton: React.FC<PageButtonProps> = ({ page, isActive, disabled, onCli
   const isEllipsis = page === '...';
 
   if (isEllipsis) {
-    return <span className="px-3 py-2 text-muted">...</span>;
+    return <span className="px-3 py-2 text-content-tertiary">...</span>;
   }
 
   return (
@@ -21,10 +21,10 @@ const PageButton: React.FC<PageButtonProps> = ({ page, isActive, disabled, onCli
       onClick={onClick}
       disabled={disabled}
       className={`
-        min-w-[40px] h-10 px-3 rounded-lg font-medium
+        min-w-[40px] h-10 px-3 rounded-xl font-medium
         transition-all duration-200
-        hover:bg-hover hover:text-white border border-white/5
-        ${isActive ? 'bg-cyan text-muted' : 'bg-elevated text-secondary'}
+        hover:bg-surface-5 hover:text-content-primary border border-border-default
+        ${isActive ? 'bg-brand-primary text-surface-0 border-brand-primary' : 'bg-surface-3 text-content-secondary'}
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
       `}
     >
@@ -40,9 +40,6 @@ interface PaginationProps {
   className?: string;
 }
 
-/**
- * 分页组件 - 终端风格
- */
 export const Pagination: React.FC<PaginationProps> = ({
   currentPage,
   totalPages,
@@ -51,7 +48,6 @@ export const Pagination: React.FC<PaginationProps> = ({
 }) => {
   if (totalPages <= 1) return null;
 
-  // 生成页码数组
   const getPageNumbers = (): (number | string)[] => {
     const pages: (number | string)[] = [];
     const delta = 2;
@@ -73,7 +69,6 @@ export const Pagination: React.FC<PaginationProps> = ({
 
   return (
     <div className={`flex items-center justify-center gap-2 ${className}`}>
-      {/* 上一页 */}
       <PageButton
         page="prev"
         disabled={currentPage === 1}
@@ -84,7 +79,6 @@ export const Pagination: React.FC<PaginationProps> = ({
         </svg>
       </PageButton>
 
-      {/* 页码 */}
       {getPageNumbers().map((page, index) => (
         <PageButton
           key={`${page}-${index}`}
@@ -94,7 +88,6 @@ export const Pagination: React.FC<PaginationProps> = ({
         />
       ))}
 
-      {/* 下一页 */}
       <PageButton
         page="next"
         disabled={currentPage === totalPages}

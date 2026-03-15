@@ -1,15 +1,15 @@
 import type React from 'react';
 import { useState } from 'react';
 import type { ReportDetails as ReportDetailsType } from '../../types/analysis';
-import { Card } from '../common';
 
 interface ReportDetailsProps {
   details?: ReportDetailsType;
-  recordId?: number;  // 分析历史记录主键 ID
+  recordId?: number;
 }
 
 /**
- * 透明度与追溯区组件 - 终端风格
+ * 数据追溯 - Bento Glassmorphism 设计
+ * 可折叠的原始数据展示
  */
 export const ReportDetails: React.FC<ReportDetailsProps> = ({
   details,
@@ -36,15 +36,20 @@ export const ReportDetails: React.FC<ReportDetailsProps> = ({
   const renderJson = (data: unknown) => {
     const jsonStr = JSON.stringify(data, null, 2);
     return (
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-hidden mt-3">
         <button
           type="button"
           onClick={() => copyToClipboard(jsonStr)}
-          className="absolute top-2 right-2 text-xs text-muted hover:text-cyan transition-colors"
+          className="absolute top-2 right-2 text-xs text-[rgba(255,255,255,0.4)] hover:text-[#00F2FE] transition-colors z-10"
         >
-          {copied ? 'Copied!' : 'Copy'}
+          {copied ? '已复制' : '复制'}
         </button>
-        <pre className="text-xs text-secondary font-mono overflow-x-auto p-3 bg-base rounded-lg max-h-80 overflow-y-auto text-left w-0 min-w-full">
+        <pre 
+          className="text-xs text-[rgba(255,255,255,0.6)] font-mono overflow-x-auto p-3 rounded-xl text-left w-0 min-w-full max-h-80 overflow-y-auto custom-scrollbar"
+          style={{
+            background: 'rgba(5, 12, 22, 0.8)',
+          }}
+        >
           {jsonStr}
         </pre>
       </div>
@@ -52,17 +57,27 @@ export const ReportDetails: React.FC<ReportDetailsProps> = ({
   };
 
   return (
-    <Card variant="bordered" padding="md" className="text-left">
-      <div className="mb-3 flex items-baseline gap-2">
-        <span className="label-uppercase">TRANSPARENCY</span>
-        <h3 className="text-base font-semibold text-white mt-0.5">数据追溯</h3>
-      </div>
+    <div 
+      className="rounded-[20px] p-5 text-left"
+      style={{
+        background: 'rgba(16, 24, 36, 0.5)',
+        backdropFilter: 'blur(10px) saturate(0.7)',
+        boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.08)',
+      }}
+    >
+      <h3 className="text-sm font-medium text-[rgba(255,255,255,0.6)] mb-4">数据追溯</h3>
 
       {/* Record ID */}
       {recordId && (
-        <div className="flex items-center gap-2 text-xs text-muted mb-3 pb-3 border-b border-white/5">
-          <span>Record ID:</span>
-          <code className="font-mono text-xs text-cyan bg-cyan/10 px-1.5 py-0.5 rounded">
+        <div className="flex items-center gap-2 text-xs text-[rgba(255,255,255,0.4)] mb-4 pb-4" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+          <span>记录 ID:</span>
+          <code 
+            className="font-mono text-xs px-2 py-0.5 rounded"
+            style={{
+              color: '#00F2FE',
+              background: 'rgba(0, 242, 254, 0.1)',
+            }}
+          >
             {recordId}
           </code>
         </div>
@@ -76,11 +91,14 @@ export const ReportDetails: React.FC<ReportDetailsProps> = ({
             <button
               type="button"
               onClick={() => setShowRaw(!showRaw)}
-              className="w-full flex items-center justify-between p-2.5 rounded-lg bg-elevated hover:bg-hover transition-colors"
+              className="w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 hover:bg-[rgba(255,255,255,0.05)]"
+              style={{
+                background: showRaw ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
+              }}
             >
-              <span className="text-xs text-white">原始分析结果</span>
+              <span className="text-xs text-[rgba(255,255,255,0.7)]">原始分析结果</span>
               <svg
-                className={`w-3.5 h-3.5 text-muted transition-transform ${showRaw ? 'rotate-180' : ''}`}
+                className={`w-4 h-4 text-[rgba(255,255,255,0.4)] transition-transform ${showRaw ? 'rotate-180' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -89,7 +107,7 @@ export const ReportDetails: React.FC<ReportDetailsProps> = ({
               </svg>
             </button>
             {showRaw && (
-              <div className="mt-2 animate-fade-in min-w-0 overflow-hidden">
+              <div className="animate-fade-in">
                 {renderJson(details.rawResult)}
               </div>
             )}
@@ -102,11 +120,14 @@ export const ReportDetails: React.FC<ReportDetailsProps> = ({
             <button
               type="button"
               onClick={() => setShowSnapshot(!showSnapshot)}
-              className="w-full flex items-center justify-between p-2.5 rounded-lg bg-elevated hover:bg-hover transition-colors"
+              className="w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 hover:bg-[rgba(255,255,255,0.05)]"
+              style={{
+                background: showSnapshot ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
+              }}
             >
-              <span className="text-xs text-white">分析快照</span>
+              <span className="text-xs text-[rgba(255,255,255,0.7)]">分析快照</span>
               <svg
-                className={`w-3.5 h-3.5 text-muted transition-transform ${showSnapshot ? 'rotate-180' : ''}`}
+                className={`w-4 h-4 text-[rgba(255,255,255,0.4)] transition-transform ${showSnapshot ? 'rotate-180' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -115,13 +136,15 @@ export const ReportDetails: React.FC<ReportDetailsProps> = ({
               </svg>
             </button>
             {showSnapshot && (
-              <div className="mt-2 animate-fade-in min-w-0 overflow-hidden">
+              <div className="animate-fade-in">
                 {renderJson(details.contextSnapshot)}
               </div>
             )}
           </div>
         )}
       </div>
-    </Card>
+    </div>
   );
 };
+
+export default ReportDetails;

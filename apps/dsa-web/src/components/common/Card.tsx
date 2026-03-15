@@ -1,18 +1,79 @@
 import type React from 'react';
 
+/**
+ * Card Variants
+ * - default: Standard glass card
+ * - bordered: Glass card with visible border
+ * - gradient: Gradient border effect
+ * - metric: Data card with decorative glow
+ * - data: Standard data card with hover effect
+ */
+type CardVariant = 'default' | 'bordered' | 'gradient' | 'metric' | 'data';
+
+type CardPadding = 'none' | 'sm' | 'md' | 'lg';
+
 interface CardProps {
+  /** Card title */
   title?: string;
+  /** Card subtitle */
   subtitle?: string;
+  /** Card content */
   children: React.ReactNode;
+  /** Additional CSS classes */
   className?: string;
-  variant?: 'default' | 'bordered' | 'gradient';
+  /** Visual variant */
+  variant?: CardVariant;
+  /** Enable hover effect */
   hoverable?: boolean;
-  padding?: 'none' | 'sm' | 'md' | 'lg';
+  /** Padding size */
+  padding?: CardPadding;
+  /** Full height */
+  fullHeight?: boolean;
 }
 
+// Padding styles - defined outside render
+const PADDING_STYLES = {
+  none: '',
+  sm: 'p-3',
+  md: 'p-4',
+  lg: 'p-5',
+} as const;
+
+// Header component - defined outside render
+interface CardHeaderProps {
+  title?: string;
+  subtitle?: string;
+}
+
+const CardHeader: React.FC<CardHeaderProps> = ({ title, subtitle }) => {
+  if (!title && !subtitle) return null;
+  
+  return (
+    <div className="mb-4">
+      {subtitle && (
+        <span className="text-xs font-semibold tracking-wider uppercase text-brand-secondary">
+          {subtitle}
+        </span>
+      )}
+      {title && (
+        <h3 className="text-lg font-semibold text-content-primary mt-1">
+          {title}
+        </h3>
+      )}
+    </div>
+  );
+};
+
 /**
- * 终端风格卡片组件
- * 支持渐变边框、悬浮效果
+ * Modern Card Component with Glass Morphism
+ * 
+ * @example
+ * <Card variant="gradient" title="Performance" subtitle="Monthly">
+ *   <div>Content here</div>
+ * </Card>
+ * <Card variant="metric" hoverable>
+ *   <div>Data card content</div>
+ * </Card>
  */
 export const Card: React.FC<CardProps> = ({
   title,
@@ -22,71 +83,62 @@ export const Card: React.FC<CardProps> = ({
   variant = 'default',
   hoverable = false,
   padding = 'md',
+  fullHeight = false,
 }) => {
-  const paddingStyles = {
-    none: '',
-    sm: 'p-3',
-    md: 'p-4',
-    lg: 'p-5',
+  // Base container styles
+  const baseStyles = 'rounded-xl relative overflow-hidden';
+  const heightStyles = fullHeight ? 'h-full flex flex-col' : '';
+
+  // Variant styles
+  const getVariantStyles = (): string => {
+    switch (variant) {
+      case 'gradient':
+        return 'card-gradient-border';
+      case 'metric':
+        return 'card-metric';
+      case 'data':
+        return 'card-data';
+      case 'bordered':
+        return 'glass-card-v3 border border-white/8';
+      case 'default':
+      default:
+        return 'glass-card-v3';
+    }
   };
 
-  const baseStyles = 'rounded-2xl';
-
-  const variantStyles = {
-    default: 'terminal-card',
-    bordered: 'terminal-card terminal-card-hover',
-    gradient: 'gradient-border-card',
-  };
-
+  // Hover styles
   const hoverStyles = hoverable
-    ? 'terminal-card-hover cursor-pointer'
+    ? 'glass-hover cursor-pointer'
     : '';
 
+  // Render gradient variant with inner wrapper
   if (variant === 'gradient') {
     return (
-      <div className={`${variantStyles.gradient} ${className}`}>
-        <div className={`gradient-border-card-inner ${paddingStyles[padding]}`}>
-          {(title || subtitle) && (
-            <div className="mb-3">
-              {subtitle && (
-                <span className="label-uppercase">{subtitle}</span>
-              )}
-              {title && (
-                <h3 className="text-lg font-semibold text-white mt-1">
-                  {title}
-                </h3>
-              )}
-            </div>
-          )}
+      <div className={`${baseStyles} ${getVariantStyles()} ${className}`}>
+        <div className={`card-gradient-border-inner ${PADDING_STYLES[padding]} ${heightStyles}`}>
+          <CardHeader title={title} subtitle={subtitle} />
           {children}
         </div>
       </div>
     );
   }
 
+  // Standard variants
   return (
     <div
       className={`
         ${baseStyles}
-        ${variantStyles[variant]}
+        ${getVariantStyles()}
         ${hoverStyles}
-        ${paddingStyles[padding]}
+        ${PADDING_STYLES[padding]}
+        ${heightStyles}
         ${className}
       `}
     >
-      {(title || subtitle) && (
-        <div className="mb-3">
-          {subtitle && (
-            <span className="label-uppercase">{subtitle}</span>
-          )}
-          {title && (
-            <h3 className="text-lg font-semibold text-white mt-1">
-              {title}
-            </h3>
-          )}
-        </div>
-      )}
+      <CardHeader title={title} subtitle={subtitle} />
       {children}
     </div>
   );
 };
+
+export default Card;

@@ -2,18 +2,17 @@ import type React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import type { ParsedApiError } from '../../api/error';
 import { getParsedApiError } from '../../api/error';
-import { Card } from '../common';
-import { ApiErrorAlert } from '../common';
 import { historyApi } from '../../api/history';
 import type { NewsIntelItem } from '../../types/analysis';
 
 interface ReportNewsProps {
-  recordId?: number;  // 分析历史记录主键 ID
+  recordId?: number;
   limit?: number;
 }
 
 /**
- * 资讯区组件 - 终端风格
+ * 相关资讯 - Bento Glassmorphism 设计
+ * 半透明毛玻璃卡片，隐形边框
  */
 export const ReportNews: React.FC<ReportNewsProps> = ({ recordId, limit = 20 }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -49,59 +48,64 @@ export const ReportNews: React.FC<ReportNewsProps> = ({ recordId, limit = 20 }) 
   }
 
   return (
-    <Card variant="bordered" padding="md">
-      <div className="flex items-center justify-between mb-3">
-        <div className="mb-3 flex items-baseline gap-2">
-          <span className="label-uppercase">NEWS FEED</span>
-          <h3 className="text-base font-semibold text-white">相关资讯</h3>
-        </div>
+    <div 
+      className="rounded-[20px] p-5"
+      style={{
+        background: 'rgba(16, 24, 36, 0.6)',
+        backdropFilter: 'blur(10px) saturate(0.7)',
+        boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.08)',
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium text-[rgba(255,255,255,0.6)]">相关资讯</h3>
         <div className="flex items-center gap-2">
           {isLoading && (
-            <div className="w-3.5 h-3.5 border-2 border-cyan/20 border-t-cyan rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-[rgba(0,242,254,0.2)] border-t-[#00F2FE] rounded-full animate-spin" />
           )}
           <button
             type="button"
             onClick={fetchNews}
-            className="text-xs text-cyan hover:text-white transition-colors"
+            className="text-xs text-[#00F2FE] hover:text-white transition-colors"
           >
             刷新
           </button>
         </div>
       </div>
 
+      {/* Error State */}
       {error && !isLoading && (
-        <ApiErrorAlert
-          error={error}
-          actionLabel="重试"
-          onAction={() => void fetchNews()}
-        />
+        <div className="text-xs text-[#FF3D00] mb-3">加载失败，点击刷新重试</div>
       )}
 
-      {isLoading && !error && (
-        <div className="flex items-center gap-2 text-xs text-secondary">
-          <div className="w-4 h-4 border-2 border-cyan/20 border-t-cyan rounded-full animate-spin" />
+      {/* Loading State */}
+      {isLoading && items.length === 0 && (
+        <div className="flex items-center gap-2 text-xs text-[rgba(255,255,255,0.4)]">
+          <div className="w-4 h-4 border-2 border-[rgba(0,242,254,0.2)] border-t-[#00F2FE] rounded-full animate-spin" />
           加载资讯中...
         </div>
       )}
 
+      {/* Empty State */}
       {!isLoading && !error && items.length === 0 && (
-        <div className="text-xs text-muted">暂无相关资讯</div>
+        <div className="text-xs text-[rgba(255,255,255,0.3)]">暂无相关资讯</div>
       )}
 
+      {/* News Items */}
       {!isLoading && !error && items.length > 0 && (
-        <div className="space-y-2 text-left">
+        <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
           {items.map((item, index) => (
             <div
               key={`${item.title}-${index}`}
-              className="group p-3 rounded-lg bg-elevated/80 border border-white/5 hover:border-cyan/30 hover:bg-hover transition-colors"
+              className="group p-3 rounded-xl transition-all duration-200 hover:bg-[rgba(255,255,255,0.05)] cursor-pointer"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0 text-left">
-                  <p className="text-sm text-white font-medium leading-snug text-left">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-[rgba(255,255,255,0.85)] font-medium leading-snug text-left group-hover:text-[#00F2FE] transition-colors">
                     {item.title}
                   </p>
                   {item.snippet && (
-                    <p className="text-xs text-secondary mt-1 text-left">
+                    <p className="text-xs text-[rgba(255,255,255,0.4)] mt-1 text-left line-clamp-2">
                       {item.snippet}
                     </p>
                   )}
@@ -111,25 +115,22 @@ export const ReportNews: React.FC<ReportNewsProps> = ({ recordId, limit = 20 }) 
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-cyan hover:text-white transition-colors inline-flex items-center gap-1 whitespace-nowrap"
+                    className="text-xs text-[rgba(255,255,255,0.3)] hover:text-[#00F2FE] transition-colors inline-flex items-center gap-1 whitespace-nowrap flex-shrink-0"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    跳转
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M14 3h7m0 0v7m0-7L10 14"
-                      />
+                    查看
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
                   </a>
                 )}
               </div>
             </div>
           ))}
-
         </div>
       )}
-    </Card>
+    </div>
   );
 };
+
+export default ReportNews;

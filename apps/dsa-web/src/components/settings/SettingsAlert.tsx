@@ -10,9 +10,9 @@ interface SettingsAlertProps {
 }
 
 const variantStyles: Record<NonNullable<SettingsAlertProps['variant']>, string> = {
-  error: 'border-red-500/35 bg-red-500/10 text-red-200',
-  success: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200',
-  warning: 'border-amber-500/35 bg-amber-500/10 text-amber-200',
+  error: 'border-semantic-danger/35 bg-semantic-danger-subtle text-semantic-danger',
+  success: 'border-semantic-success/35 bg-semantic-success-subtle text-semantic-success',
+  warning: 'border-semantic-warning/35 bg-semantic-warning-subtle text-semantic-warning',
 };
 
 export const SettingsAlert: React.FC<SettingsAlertProps> = ({
@@ -28,7 +28,7 @@ export const SettingsAlert: React.FC<SettingsAlertProps> = ({
       <p className="text-sm font-semibold">{title}</p>
       <p className="mt-1 text-xs opacity-90">{message}</p>
       {actionLabel && onAction ? (
-        <button type="button" className="mt-3 btn-secondary !py-1.5 !px-3 !text-xs" onClick={onAction}>
+        <button type="button" className="mt-3 btn-ghost !py-1.5 !px-3 !text-xs" onClick={onAction}>
           {actionLabel}
         </button>
       ) : null}

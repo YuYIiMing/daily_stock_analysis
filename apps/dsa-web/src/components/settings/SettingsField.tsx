@@ -41,7 +41,7 @@ function renderFieldControl(
   onPasswordFocus: () => void,
 ) {
   const schema = item.schema;
-  const commonClass = 'input-terminal';
+  const commonClass = 'input-base';
   const controlType = schema?.uiControl ?? 'text';
   const isMultiValue = isMultiValueField(item);
 
@@ -63,7 +63,7 @@ function renderFieldControl(
           onChange={onChange}
           options={schema.options.map((option) => ({ value: option, label: option }))}
           disabled={disabled || !schema.isEditable}
-          placeholder="请选择"
+          placeholder="Please select"
         />
       );
   }
@@ -77,8 +77,9 @@ function renderFieldControl(
           checked={checked}
           disabled={disabled || !schema?.isEditable}
           onChange={(event) => onChange(event.target.checked ? 'true' : 'false')}
+          className="rounded border-border-default text-brand-primary focus:ring-brand-primary"
         />
-        <span className="text-sm text-secondary">{checked ? '已启用' : '未启用'}</span>
+        <span className="text-sm text-content-secondary">{checked ? '已启用' : '已禁用'}</span>
       </label>
     );
   }
@@ -106,7 +107,7 @@ function renderFieldControl(
               />
               <button
                 type="button"
-                className="btn-secondary !p-2"
+                className="btn-ghost !p-2"
                 disabled={disabled || !schema?.isEditable}
                 onClick={onToggleSecretVisible}
                 title={isSecretVisible ? '隐藏' : '显示'}
@@ -116,14 +117,14 @@ function renderFieldControl(
               </button>
               <button
                 type="button"
-                className="btn-secondary !px-3 !py-2 text-xs"
+                className="btn-ghost !px-3 !py-2 text-xs"
                 disabled={disabled || !schema?.isEditable || values.length <= 1}
                 onClick={() => {
                   const nextValues = values.filter((_, rowIndex) => rowIndex !== index);
                   onChange(serializeMultiValues(nextValues.length ? nextValues : ['']));
                 }}
               >
-                删除
+                移除
               </button>
             </div>
           ))}
@@ -131,11 +132,11 @@ function renderFieldControl(
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="btn-secondary !px-3 !py-2 text-xs"
+              className="btn-ghost !px-3 !py-2 text-xs"
               disabled={disabled || !schema?.isEditable}
               onClick={() => onChange(serializeMultiValues([...values, '']))}
             >
-              添加 Key
+              添加密钥
             </button>
           </div>
         </div>
@@ -155,7 +156,7 @@ function renderFieldControl(
         />
         <button
           type="button"
-          className="btn-secondary !p-2"
+          className="btn-ghost !p-2"
           disabled={disabled || !schema?.isEditable}
           onClick={onToggleSecretVisible}
           title={isSecretVisible ? '隐藏' : '显示'}
@@ -196,18 +197,18 @@ export const SettingsField: React.FC<SettingsFieldProps> = ({
   const [isPasswordEditable, setIsPasswordEditable] = useState(false);
 
   return (
-    <div className={`rounded-xl border p-4 ${hasError ? 'border-red-500/35' : 'border-white/8'} bg-elevated/50`}>
+    <div className={`card-bordered p-4 ${hasError ? 'border-semantic-danger/35' : ''}`}>
       <div className="mb-2 flex items-center gap-2">
-        <label className="text-sm font-semibold text-white" htmlFor={`setting-${item.key}`}>
+        <label className="text-sm font-semibold text-content-primary" htmlFor={`setting-${item.key}`}>
           {title}
         </label>
         {schema?.isSensitive ? (
-          <span className="badge badge-purple text-[10px]">敏感</span>
+          <span className="badge badge-nebula text-[10px]">敏感</span>
         ) : null}
       </div>
 
       {description ? (
-        <p className="mb-3 text-xs text-muted" title={description}>
+        <p className="mb-3 text-xs text-content-tertiary" title={description}>
           {description}
         </p>
       ) : null}
@@ -226,9 +227,9 @@ export const SettingsField: React.FC<SettingsFieldProps> = ({
       </div>
 
       {schema?.isSensitive ? (
-        <p className="mt-2 text-[11px] text-secondary">
-          密钥默认隐藏，可点击眼睛图标查看明文。
-          {isMultiValue ? ' 支持添加多个输入框进行增删。' : ''}
+        <p className="mt-2 text-[11px] text-content-secondary">
+          敏感值默认隐藏，点击眼睛图标查看。
+          {isMultiValue ? ' 支持多个条目。' : ''}
         </p>
       ) : null}
 
@@ -237,7 +238,7 @@ export const SettingsField: React.FC<SettingsFieldProps> = ({
           {issues.map((issue, index) => (
             <p
               key={`${issue.code}-${issue.key}-${index}`}
-              className={issue.severity === 'error' ? 'text-xs text-danger' : 'text-xs text-warning'}
+              className={issue.severity === 'error' ? 'text-xs text-semantic-danger' : 'text-xs text-semantic-warning'}
             >
               {issue.message}
             </p>

@@ -6,10 +6,6 @@ interface JsonViewerProps {
   className?: string;
 }
 
-/**
- * JSON 结构化展示组件
- * 支持语法高亮和折叠
- */
 export const JsonViewer: React.FC<JsonViewerProps> = ({
   data,
   maxHeight = '400px',
@@ -19,7 +15,7 @@ export const JsonViewer: React.FC<JsonViewerProps> = ({
 
   if (!data) {
     return (
-      <div className="text-gray-500 italic py-4 text-center">暂无数据</div>
+      <div className="text-content-tertiary italic py-4 text-center">No data</div>
     );
   }
 
@@ -31,28 +27,23 @@ export const JsonViewer: React.FC<JsonViewerProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // 简单的语法高亮
   const highlightJson = (json: string): React.ReactNode => {
     return json.split('\n').map((line, index) => {
-      // 高亮 key
       let highlighted = line.replace(
         /"([^"]+)":/g,
-        '<span class="text-cyan-400">"$1"</span>:'
+        '<span style="color: var(--brand-primary)">"$1"</span>:'
       );
-      // 高亮字符串值
       highlighted = highlighted.replace(
         /: "([^"]*)"/g,
-        ': <span class="text-emerald-400">"$1"</span>'
+        ': <span style="color: var(--semantic-success)">"$1"</span>'
       );
-      // 高亮数字
       highlighted = highlighted.replace(
         /: (-?\d+\.?\d*)/g,
-        ': <span class="text-amber-400">$1</span>'
+        ': <span style="color: var(--semantic-warning)">$1</span>'
       );
-      // 高亮布尔值和 null
       highlighted = highlighted.replace(
         /: (true|false|null)/g,
-        ': <span class="text-purple-400">$1</span>'
+        ': <span style="color: var(--brand-secondary)">$1</span>'
       );
 
       return (
@@ -67,20 +58,18 @@ export const JsonViewer: React.FC<JsonViewerProps> = ({
 
   return (
     <div className={`relative ${className}`}>
-      {/* 复制按钮 */}
       <button
         onClick={handleCopy}
-        className="absolute top-2 right-2 px-2 py-1 text-xs rounded
-          bg-slate-700 hover:bg-slate-600 text-gray-300
+        className="absolute top-2 right-2 px-2 py-1 text-xs rounded-xl
+          bg-surface-5 hover:bg-surface-6 text-content-secondary
           transition-colors z-10"
       >
-        {copied ? '已复制!' : '复制'}
+        {copied ? 'Copied!' : 'Copy'}
       </button>
 
-      {/* JSON 内容 */}
       <div
-        className="bg-slate-900/80 rounded-lg p-4 overflow-auto custom-scrollbar
-          border border-slate-700/50 font-mono text-sm text-gray-300"
+        className="bg-surface-2 rounded-xl p-4 overflow-auto custom-scrollbar
+          border border-border-default font-mono text-sm text-content-secondary"
         style={{ maxHeight }}
       >
         <pre className="whitespace-pre-wrap break-words">

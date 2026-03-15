@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 📊 **LLM cost tracking** — all LLM calls (analysis, agent, market review) are recorded in the `llm_usage` table; new `GET /api/v1/usage/summary?period=today|month|all` endpoint returns aggregated token usage broken down by call type and model
 - ⚙️ **GitHub Actions LiteLLM 配置支持** — 工作流新增 `LITELLM_CONFIG`、`LITELLM_API_KEY`、`LITELLM_MODEL`、`LITELLM_CONFIG_YAML` 环境变量，支持使用提交 `litellm_config.yaml` 文件方式，或将 `litellm_config.yaml` 配置写入 GitHub Actions Variables 或 Secret 的方式，以实现灵活配置所有 AI 提供商（包括 siliconflow、AIHubMix 等），与本地环境保持一致；配置诊断步骤新增 LiteLLM 状态检查；`litellm_config.example.yaml` 新增 siliconflow 提供商配置示例
 - 🤖 **Agent models discovery API** — 新增 `GET /api/v1/agent/models`，返回当前配置下的可用模型部署列表（含 `primary`/`fallback`/`source`/`api_base` 元数据），供 Web UI 模型选择器直接使用
+- ⏰ **定时任务日志增强** — scheduler.py 增加详细日志输出，显示配置状态（交易日检查开关、定时任务开关、执行时间），便于故障排查
 ### Fixed
 - **GitHub Actions 筹码分布可配置** (#617) — workflow 不再硬编码 ENABLE_CHIP_DISTRIBUTION=false，支持通过 vars/secrets 覆盖；默认仍为 false 保持云端稳定性
 - 🐛 **analyze_trend 始终报 No historical data** (#600) — 根因：错误依赖 get_analysis_context 的 raw_data（该接口从未返回）；修复：改为优先 db.get_data_range、备选 DataFetcherManager 获取历史数据，与 pipeline 一致

@@ -385,6 +385,40 @@ class HistoryService:
         else:
             return "极度悲观"
 
+    def delete_history(self, record_id: int) -> Tuple[bool, str]:
+        """
+        Delete an analysis history record by its primary key ID.
+
+        This method performs a cascading delete:
+        1. Deletes associated backtest_results records
+        2. Deletes the analysis_history record
+
+        Note: Associated news_intel records are preserved as they may be
+        referenced by other analyses.
+
+        Args:
+            record_id: The primary key ID of the analysis_history record.
+
+        Returns:
+            Tuple of (success, message):
+            - success: True if deletion succeeded
+            - message: Human-readable result message
+
+        Raises:
+            Exception: If database operation fails
+        """
+        try:
+            success, deleted_count = self.db.delete_analysis_history(record_id)
+
+            if not success:
+                return False, f"未找到 ID={record_id} 的分析记录"
+
+            return True, "分析记录已删除"
+
+        except Exception as e:
+            logger.error(f"删除分析记录失败 (record_id={record_id}): {e}", exc_info=True)
+            raise
+
     def get_markdown_report(self, record_id: str) -> Optional[str]:
         """
         Generate a Markdown report for a single analysis history record.

@@ -110,6 +110,13 @@ class Scheduler:
             logger.info(f"定时任务开始执行 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info("=" * 50)
             
+            # 记录交易日检查配置状态
+            import os
+            trading_day_check = os.getenv('TRADING_DAY_CHECK_ENABLED', 'true').lower()
+            schedule_enabled = os.getenv('SCHEDULE_ENABLED', 'false').lower()
+            schedule_time = os.getenv('SCHEDULE_TIME', '18:00')
+            logger.info(f"配置状态 - TRADING_DAY_CHECK_ENABLED: {trading_day_check}, SCHEDULE_ENABLED: {schedule_enabled}, SCHEDULE_TIME: {schedule_time}")
+            
             self._task_callback()
             
             logger.info(f"定时任务执行完成 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

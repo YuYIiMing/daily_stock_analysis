@@ -26,7 +26,7 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     if (isFirstTime && password !== passwordConfirm) {
-      setError('两次输入的密码不一致');
+      setError('Passwords do not match');
       return;
     }
     setIsSubmitting(true);
@@ -35,7 +35,7 @@ const LoginPage: React.FC = () => {
       if (result.success) {
         navigate(redirect, { replace: true });
       } else {
-        setError(result.error ?? '登录失败');
+        setError(result.error ?? 'Login failed');
       }
     } finally {
       setIsSubmitting(false);
@@ -43,27 +43,27 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-base px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-white/8 bg-card/80 p-6 backdrop-blur-sm">
-        <h1 className="mb-2 text-xl font-semibold text-white">
-          {isFirstTime ? '设置初始密码' : '管理员登录'}
+    <div className="flex min-h-screen flex-col items-center justify-center bg-surface-0 px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-border-default bg-surface-2/80 p-6 backdrop-blur-sm">
+        <h1 className="mb-2 text-xl font-semibold text-content-primary">
+          {isFirstTime ? 'Set Initial Password' : 'Admin Login'}
         </h1>
-        <p className="mb-6 text-sm text-secondary">
+        <p className="mb-6 text-sm text-content-secondary">
           {isFirstTime
-            ? '请设置管理员密码，输入两遍确认'
-            : '请输入密码以继续访问'}
+            ? 'Please set admin password, enter twice to confirm'
+            : 'Please enter password to continue'}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-secondary">
-              {isFirstTime ? '新密码' : '密码'}
+            <label htmlFor="password" className="mb-1 block text-sm font-medium text-content-secondary">
+              {isFirstTime ? 'New Password' : 'Password'}
             </label>
             <input
               id="password"
               type="password"
-              className="input-terminal"
-              placeholder={isFirstTime ? '输入新密码' : '输入密码'}
+              className="input-base"
+              placeholder={isFirstTime ? 'Enter new password' : 'Enter password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={isSubmitting}
@@ -76,15 +76,15 @@ const LoginPage: React.FC = () => {
             <div>
               <label
                 htmlFor="passwordConfirm"
-                className="mb-1 block text-sm font-medium text-secondary"
+                className="mb-1 block text-sm font-medium text-content-secondary"
               >
-                确认密码
+                Confirm Password
               </label>
               <input
                 id="passwordConfirm"
                 type="password"
-                className="input-terminal"
-                placeholder="再次输入密码"
+                className="input-base"
+                placeholder="Re-enter password"
                 value={passwordConfirm}
                 onChange={(e) => setPasswordConfirm(e.target.value)}
                 disabled={isSubmitting}
@@ -98,7 +98,7 @@ const LoginPage: React.FC = () => {
               ? <ApiErrorAlert error={error} className="!mt-3" />
               : (
                 <SettingsAlert
-                  title={isFirstTime ? '设置失败' : '登录失败'}
+                  title={isFirstTime ? 'Setup Failed' : 'Login Failed'}
                   message={error}
                   variant="error"
                   className="!mt-3"
@@ -111,7 +111,7 @@ const LoginPage: React.FC = () => {
             className="btn-primary w-full"
             disabled={isSubmitting}
           >
-            {isSubmitting ? (isFirstTime ? '设置中...' : '登录中...') : isFirstTime ? '设置密码' : '登录'}
+            {isSubmitting ? (isFirstTime ? 'Setting...' : 'Logging in...') : isFirstTime ? 'Set Password' : 'Login'}
           </button>
         </form>
       </div>

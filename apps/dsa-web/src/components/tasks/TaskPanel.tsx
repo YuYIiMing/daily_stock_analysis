@@ -2,43 +2,63 @@ import type React from 'react';
 import type { TaskInfo } from '../../types/analysis';
 
 /**
- * 任务项组件属性
+ * Task Item Component - Bento Glassmorphism
  */
 interface TaskItemProps {
   task: TaskInfo;
 }
 
-/**
- * 单个任务项
- */
 const TaskItem: React.FC<TaskItemProps> = ({ task }) => {
   const isPending = task.status === 'pending';
   const isProcessing = task.status === 'processing';
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2 bg-elevated rounded-lg border border-white/5">
-      {/* 状态图标 */}
+    <div 
+      className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+      style={{
+        background: 'rgba(16, 24, 36, 0.6)',
+        backdropFilter: 'blur(10px)',
+        boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.06)',
+      }}
+    >
+      {/* Status Icon */}
       <div className="shrink-0">
         {isProcessing ? (
-          // 加载动画
-          <svg className="w-4 h-4 text-cyan animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
+          // Processing - spinning icon with aurora glow
+          <div className="relative">
+            <div 
+              className="absolute inset-0 rounded-full blur-sm animate-pulse"
+              style={{ background: 'rgba(0, 242, 254, 0.2)' }}
             />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
+            <svg 
+              className="w-4 h-4 animate-spin relative" 
+              style={{ color: '#00F2FE' }}
+              fill="none" 
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+          </div>
         ) : isPending ? (
-          // 等待图标
-          <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          // Pending - clock icon
+          <svg 
+            className="w-4 h-4 text-[rgba(255,255,255,0.3)]" 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -49,31 +69,36 @@ const TaskItem: React.FC<TaskItemProps> = ({ task }) => {
         ) : null}
       </div>
 
-      {/* 任务信息 */}
+      {/* Task Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-white truncate">
+          <span className="text-sm font-medium text-[rgba(255,255,255,0.9)] truncate">
             {task.stockName || task.stockCode}
           </span>
-          <span className="text-xs text-muted">
+          <span className="text-xs text-[rgba(255,255,255,0.4)]">
             {task.stockCode}
           </span>
         </div>
         {task.message && (
-          <p className="text-xs text-secondary truncate mt-0.5">
+          <p className="text-xs text-[rgba(255,255,255,0.5)] truncate mt-0.5">
             {task.message}
           </p>
         )}
       </div>
 
-      {/* 状态标签 */}
+      {/* Status Badge */}
       <div className="flex-shrink-0">
         <span
-          className={`text-xs px-1.5 py-0.5 rounded ${
-            isProcessing
-              ? 'bg-cyan/20 text-cyan'
-              : 'bg-white/10 text-muted'
-          }`}
+          className={`
+            text-xs px-2 py-0.5 rounded-full font-medium
+            ${isProcessing
+              ? 'text-[#00F2FE] border border-[rgba(0,242,254,0.3)]'
+              : 'text-[rgba(255,255,255,0.4)] border border-[rgba(255,255,255,0.1)]'
+            }
+          `}
+          style={{
+            background: isProcessing ? 'rgba(0, 242, 254, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+          }}
         >
           {isProcessing ? '分析中' : '等待中'}
         </span>
@@ -83,22 +108,17 @@ const TaskItem: React.FC<TaskItemProps> = ({ task }) => {
 };
 
 /**
- * 任务面板属性
+ * Task Panel Props
  */
 interface TaskPanelProps {
-  /** 任务列表 */
   tasks: TaskInfo[];
-  /** 是否显示 */
   visible?: boolean;
-  /** 标题 */
   title?: string;
-  /** 自定义类名 */
   className?: string;
 }
 
 /**
- * 任务面板组件
- * 显示进行中的分析任务列表
+ * 分析任务面板 - Bento Glassmorphism 设计
  */
 export const TaskPanel: React.FC<TaskPanelProps> = ({
   tasks,
@@ -106,12 +126,11 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
   title = '分析任务',
   className = '',
 }) => {
-  // 筛选活跃任务（pending 和 processing）
+  // Filter active tasks
   const activeTasks = tasks.filter(
     (t) => t.status === 'pending' || t.status === 'processing'
   );
 
-  // 无任务或不可见时不渲染
   if (!visible || activeTasks.length === 0) {
     return null;
   }
@@ -120,11 +139,27 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
   const processingCount = activeTasks.filter((t) => t.status === 'processing').length;
 
   return (
-    <div className={`bg-card rounded-xl border border-white/5 overflow-hidden ${className}`}>
-      {/* 标题栏 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/5">
+    <div 
+      className={`rounded-[20px] overflow-hidden ${className}`}
+      style={{
+        background: 'rgba(16, 24, 36, 0.7)',
+        backdropFilter: 'blur(10px) saturate(0.7)',
+        boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.08)',
+      }}
+    >
+      {/* Header */}
+      <div 
+        className="flex items-center justify-between px-4 py-3"
+        style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}
+      >
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg 
+            className="w-4 h-4" 
+            style={{ color: '#00F2FE' }}
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -132,12 +167,15 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
               d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
             />
           </svg>
-          <span className="text-sm font-medium text-white">{title}</span>
+          <span className="text-sm font-medium text-[rgba(255,255,255,0.8)]">{title}</span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted">
+        <div className="flex items-center gap-2 text-xs text-[rgba(255,255,255,0.4)]">
           {processingCount > 0 && (
             <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-cyan rounded-full animate-pulse" />
+              <span 
+                className="w-1.5 h-1.5 rounded-full animate-pulse"
+                style={{ background: '#00F2FE', boxShadow: '0 0 6px rgba(0, 242, 254, 0.5)' }}
+              />
               {processingCount} 进行中
             </span>
           )}
@@ -147,8 +185,8 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
         </div>
       </div>
 
-      {/* 任务列表 */}
-      <div className="p-2 space-y-2 max-h-64 overflow-y-auto">
+      {/* Task List */}
+      <div className="p-3 space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
         {activeTasks.map((task) => (
           <TaskItem key={task.taskId} task={task} />
         ))}

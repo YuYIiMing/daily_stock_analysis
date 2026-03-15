@@ -2,8 +2,21 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  Menu,
+  Plus,
+  Trash2,
+  Sparkles,
+  Download,
+  Send,
+  ChevronRight,
+  Brain,
+  CheckCircle2,
+  XCircle,
+  PenLine,
+} from 'lucide-react';
 import { agentApi } from '../api/agent';
-import { ApiErrorAlert } from '../components/common';
+import { ApiErrorAlert, Button } from '../components/common';
 import { getParsedApiError } from '../api/error';
 import type { StrategyInfo } from '../api/agent';
 import { historyApi } from '../api/history';
@@ -23,7 +36,7 @@ interface FollowUpContext {
   previous_change_pct?: number;
 }
 
-// Quick question examples shown on empty state
+// 快速问题示例
 const QUICK_QUESTIONS = [
   { label: '用缠论分析茅台', strategy: 'chan_theory' },
   { label: '波浪理论看宁德时代', strategy: 'wave_theory' },
@@ -211,24 +224,14 @@ const ChatPage: React.FC = () => {
     return (
       <button
         onClick={() => toggleThinking(msg.id)}
-        className="flex items-center gap-2 text-xs text-muted hover:text-secondary transition-colors mb-2 w-full text-left"
+        className="flex items-center gap-2 text-xs text-[rgba(255,255,255,0.5)] hover:text-[#00F2FE] transition-colors mb-2 w-full text-left"
       >
-        <svg
+        <ChevronRight
           className={`w-3 h-3 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5l7 7-7 7"
-          />
-        </svg>
+        />
         <span className="flex items-center gap-1.5">
           <span className="opacity-60">思考过程</span>
-          <span className="text-muted/50">·</span>
+          <span className="text-[rgba(255,255,255,0.3)]">·</span>
           <span className="opacity-50">{summary}</span>
         </span>
       </button>
@@ -236,34 +239,40 @@ const ChatPage: React.FC = () => {
   };
 
   const renderThinkingDetails = (steps: ProgressStep[]) => (
-    <div className="mb-3 pl-5 border-l border-white/5 space-y-0.5 animate-fade-in">
+    <div className="mb-3 pl-4 border-l-2 border-[rgba(0,242,254,0.2)] space-y-1 animate-fade-in">
       {steps.map((step, idx) => {
-        let icon = '⋯';
+        let icon: React.ReactNode = <span>⋯</span>;
         let text = '';
-        let colorClass = 'text-muted';
+        let colorClass = 'text-[rgba(255,255,255,0.5)]';
         if (step.type === 'thinking') {
-          icon = '🤔';
+          icon = <Brain className="w-3 h-3" />;
           text = step.message || `第 ${step.step} 步：思考`;
-          colorClass = 'text-secondary';
+          colorClass = 'text-[#00F2FE]';
         } else if (step.type === 'tool_start') {
-          icon = '⚙️';
+          icon = <Sparkles className="w-3 h-3" />;
           text = `${step.display_name || step.tool}...`;
-          colorClass = 'text-secondary';
+          colorClass = 'text-[#00F2FE]';
         } else if (step.type === 'tool_done') {
-          icon = step.success ? '✅' : '❌';
+          icon = step.success ? (
+            <CheckCircle2 className="w-3 h-3 text-[#00E676]" />
+          ) : (
+            <XCircle className="w-3 h-3 text-[#FF3D00]" />
+          );
           text = `${step.display_name || step.tool} (${step.duration}s)`;
-          colorClass = step.success ? 'text-green-400' : 'text-red-400';
+          colorClass = step.success ? 'text-[#00E676]' : 'text-[#FF3D00]';
         } else if (step.type === 'generating') {
-          icon = '✍️';
+          icon = <PenLine className="w-3 h-3" />;
           text = step.message || '生成分析';
-          colorClass = 'text-cyan';
+          colorClass = 'text-[#8A2BE2]';
         }
         return (
           <div
             key={idx}
             className={`flex items-center gap-2 text-xs py-0.5 ${colorClass}`}
           >
-            <span className="w-4 flex-shrink-0 text-center">{icon}</span>
+            <span className="w-4 flex-shrink-0 flex items-center justify-center">
+              {icon}
+            </span>
             <span className="leading-relaxed">{text}</span>
           </div>
         );
@@ -273,44 +282,37 @@ const ChatPage: React.FC = () => {
 
   const sidebarContent = (
     <>
-      <div className="p-3 border-b border-white/5 flex items-center justify-between">
-        <span className="text-sm font-medium text-white">历史对话</span>
+      <div className="p-4 border-b border-[rgba(255,255,255,0.05)] flex items-center justify-between">
+        <span className="text-sm font-medium text-[rgba(255,255,255,0.9)]">对话历史</span>
         <button
           onClick={handleStartNewChat}
-          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-secondary hover:text-white"
-          title="新对话"
+          className="p-2 rounded-xl hover:bg-[rgba(255,255,255,0.05)] transition-colors text-[rgba(255,255,255,0.5)] hover:text-white"
+          title="新建对话"
+          aria-label="开始新对话"
         >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
+          <Plus className="w-4 h-4" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
         {sessionsLoading ? (
-          <div className="p-4 text-center text-xs text-muted">加载中...</div>
+          <div className="p-4 text-center text-xs text-[rgba(255,255,255,0.4)]">加载中...</div>
         ) : sessions.length === 0 ? (
-          <div className="p-4 text-center text-xs text-muted">暂无历史对话</div>
+          <div className="p-4 text-center text-xs text-[rgba(255,255,255,0.4)]">暂无对话历史</div>
         ) : (
           sessions.map((s) => (
             <button
               key={s.session_id}
               onClick={() => handleSwitchSession(s.session_id)}
-              className={`w-full text-left px-3 py-2.5 border-b border-white/5 hover:bg-white/5 transition-colors group ${
-                s.session_id === sessionId ? 'bg-white/10' : ''
+              className={`w-full text-left p-3 rounded-xl mb-1 transition-all duration-200 group ${
+                s.session_id === sessionId 
+                  ? 'bg-[rgba(0,242,254,0.1)] border border-[rgba(0,242,254,0.2)]' 
+                  : 'hover:bg-[rgba(255,255,255,0.03)]'
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-secondary group-hover:text-white truncate flex-1">
+                <span className={`text-sm truncate flex-1 ${
+                  s.session_id === sessionId ? 'text-[#00F2FE]' : 'text-[rgba(255,255,255,0.7)]'
+                }`}>
                   {s.title}
                 </span>
                 <button
@@ -318,25 +320,14 @@ const ChatPage: React.FC = () => {
                     e.stopPropagation();
                     setDeleteConfirmId(s.session_id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/10 text-muted hover:text-red-400 transition-all flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-[rgba(255,61,0,0.1)] text-[rgba(255,255,255,0.4)] hover:text-[#FF3D00] transition-all flex-shrink-0"
                   title="删除"
+                  aria-label="删除对话"
                 >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
-              <div className="text-xs text-muted mt-0.5">
+              <div className="text-xs text-[rgba(255,255,255,0.4)] mt-1">
                 {s.message_count} 条消息
                 {s.last_active &&
                   ` · ${new Date(s.last_active).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
@@ -350,8 +341,15 @@ const ChatPage: React.FC = () => {
 
   return (
     <div className="h-screen flex max-w-6xl mx-auto w-full p-4 md:p-6 gap-4">
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex flex-col w-64 flex-shrink-0 glass-card overflow-hidden">
+      {/* Desktop sidebar - Gemini风格 */}
+      <div 
+        className="hidden md:flex flex-col w-64 flex-shrink-0 rounded-[20px] overflow-hidden"
+        style={{
+          background: 'rgba(16, 24, 36, 0.6)',
+          backdropFilter: 'blur(10px) saturate(0.7)',
+          boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.08)',
+        }}
+      >
         {sidebarContent}
       </div>
 
@@ -360,10 +358,17 @@ const ChatPage: React.FC = () => {
         <div
           className="fixed inset-0 z-40 md:hidden"
           onClick={() => setSidebarOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Chat history sidebar"
         >
           <div className="absolute inset-0 bg-black/60" />
           <div
-            className="absolute left-0 top-0 bottom-0 w-72 flex flex-col glass-card overflow-hidden border-r border-white/10 shadow-2xl"
+            className="absolute left-0 top-0 bottom-0 w-72 flex flex-col overflow-hidden border-r border-[rgba(255,255,255,0.05)] shadow-2xl"
+            style={{
+              background: 'rgba(16, 24, 36, 0.9)',
+              backdropFilter: 'blur(20px)',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {sidebarContent}
@@ -374,101 +379,84 @@ const ChatPage: React.FC = () => {
       {/* Delete confirmation dialog */}
       {deleteConfirmId && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(5, 12, 22, 0.8)', backdropFilter: 'blur(10px)' }}
           onClick={() => setDeleteConfirmId(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delete confirmation"
         >
           <div
-            className="bg-elevated border border-white/10 rounded-xl p-6 max-w-sm mx-4 shadow-2xl"
+            className="rounded-[20px] p-6 max-w-sm mx-4 shadow-2xl"
+            style={{
+              background: 'rgba(16, 24, 36, 0.9)',
+              backdropFilter: 'blur(20px)',
+              boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.1), 0 20px 40px rgba(0, 0, 0, 0.5)',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-white font-medium mb-2">删除对话</h3>
-            <p className="text-sm text-secondary mb-5">
-              删除后，该对话将不可恢复，确认删除吗？
+            <h3 className="text-[rgba(255,255,255,0.9)] font-medium mb-2">删除对话</h3>
+            <p className="text-sm text-[rgba(255,255,255,0.5)] mb-5">
+              此操作无法撤销，确定要删除吗？
             </p>
             <div className="flex justify-end gap-3">
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-1.5 rounded-lg text-sm text-secondary hover:text-white hover:bg-white/5 border border-white/10 transition-colors"
               >
                 取消
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
                 onClick={confirmDelete}
-                className="px-4 py-1.5 rounded-lg text-sm text-white bg-red-500/80 hover:bg-red-500 transition-colors"
               >
                 删除
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Main chat area */}
+      {/* Main chat area - Gemini风格 */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="mb-4 flex-shrink-0">
-          <h1 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-[rgba(255,255,255,0.95)] mb-2 flex items-center gap-2">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="md:hidden p-1.5 -ml-1 rounded-lg hover:bg-white/10 transition-colors text-secondary hover:text-white"
-              title="历史对话"
+              className="md:hidden p-1.5 -ml-1 rounded-xl hover:bg-[rgba(255,255,255,0.05)] transition-colors text-[rgba(255,255,255,0.5)] hover:text-white"
+              title="对话历史"
+              aria-label="切换对话历史"
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
+              <Menu className="w-5 h-5" />
             </button>
-            <svg
-              className="w-6 h-6 text-cyan"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+            <div 
+              className="w-8 h-8 rounded-xl flex items-center justify-center"
+              style={{
+                background: 'linear-gradient(135deg, #00F2FE, #8A2BE2)',
+              }}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-              />
-            </svg>
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
             问股
           </h1>
-          <p className="text-secondary text-sm">
-            向 AI 询问个股分析，获取基于策略的交易建议与实时决策报告。
+          <p className="text-[rgba(255,255,255,0.5)] text-sm">
+            向AI询问股票分析，获取基于策略的交易建议
           </p>
           {messages.length > 0 && (
             <div className="mt-2 flex gap-2 items-center">
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => downloadSession(messages)}
-                className="px-3 py-1.5 rounded-lg text-sm text-secondary hover:text-white hover:bg-white/10 border border-white/10 transition-colors flex items-center gap-1.5"
-                title="导出会话为 Markdown 文件"
               >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                  />
-                </svg>
-                导出会话
-              </button>
-              <button
-                type="button"
+                <Download className="w-4 h-4" />
+                导出
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={async () => {
                   if (sending) return;
                   setSending(true);
@@ -490,49 +478,17 @@ const ChatPage: React.FC = () => {
                   }
                 }}
                 disabled={sending}
-                className="px-3 py-1.5 rounded-lg text-sm text-secondary hover:text-white hover:bg-white/10 border border-white/10 transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="发送到已配置的通知机器人/邮箱"
               >
                 {sending ? (
-                  <svg
-                    className="w-4 h-4 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
+                  <span className="w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                    />
-                  </svg>
+                  <Send className="w-4 h-4" />
                 )}
                 发送
-              </button>
+              </Button>
               {sendToast && (
                 <span
-                  className={`text-sm ${sendToast.type === 'success' ? 'text-green-400' : 'text-red-400'}`}
+                  className={`text-sm ${sendToast.type === 'success' ? 'text-[#00E676]' : 'text-[#FF3D00]'}`}
                 >
                   {sendToast.message}
                 </span>
@@ -541,39 +497,51 @@ const ChatPage: React.FC = () => {
           )}
         </header>
 
-        <div className="flex-1 flex flex-col glass-card overflow-hidden min-h-0 relative z-10">
-          {/* Messages */}
+        <div 
+          className="flex-1 flex flex-col overflow-hidden min-h-0 relative z-10 rounded-[20px]"
+          style={{
+            background: 'rgba(16, 24, 36, 0.5)',
+            backdropFilter: 'blur(10px) saturate(0.7)',
+            boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.08)',
+          }}
+        >
+          {/* Messages - Gemini风格 */}
           <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar relative z-10">
             {messages.length === 0 && !loading ? (
               <div className="h-full flex flex-col items-center justify-center text-center">
-                <div className="w-16 h-16 mb-4 rounded-2xl bg-white/5 flex items-center justify-center">
-                  <svg
-                    className="w-8 h-8 text-muted"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                    />
-                  </svg>
+                <div 
+                  className="w-16 h-16 mb-4 rounded-2xl flex items-center justify-center"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(0,242,254,0.2), rgba(138,43,226,0.2))',
+                  }}
+                >
+                  <Brain className="w-8 h-8 text-[#00F2FE]" />
                 </div>
-                <h3 className="text-lg font-medium text-white mb-2">
-                  开始问股
+                <h3 className="text-lg font-medium text-[rgba(255,255,255,0.9)] mb-2">
+                  开始对话
                 </h3>
-                <p className="text-sm text-secondary max-w-sm mb-6">
-                  输入「分析 600519」或「茅台现在能买吗」，AI
-                  将调用实时数据工具为您生成决策报告。
+                <p className="text-sm text-[rgba(255,255,255,0.5)] max-w-sm mb-6">
+                  输入"分析600519"或"茅台现在适合买入吗"，AI将使用实时数据生成决策报告
                 </p>
                 <div className="flex flex-wrap gap-2 justify-center max-w-lg">
                   {QUICK_QUESTIONS.map((q, i) => (
                     <button
                       key={i}
                       onClick={() => handleQuickQuestion(q)}
-                      className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-secondary hover:text-white hover:border-cyan/40 hover:bg-cyan/5 transition-all"
+                      className="px-4 py-2 rounded-xl text-sm transition-all duration-200 hover:scale-105"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(0, 242, 254, 0.4)';
+                        e.currentTarget.style.background = 'rgba(0, 242, 254, 0.1)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      }}
                     >
                       {q.label}
                     </button>
@@ -586,38 +554,59 @@ const ChatPage: React.FC = () => {
                   key={msg.id}
                   className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
                 >
+                  {/* Avatar - Gemini风格 */}
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-sm font-medium shadow-lg ${
                       msg.role === 'user'
-                        ? 'bg-cyan text-black'
-                        : 'bg-white/10 text-white'
+                        ? ''
+                        : ''
                     }`}
+                    style={{
+                      background: msg.role === 'user' 
+                        ? 'linear-gradient(135deg, #00F2FE, #8A2BE2)'
+                        : 'rgba(255, 255, 255, 0.1)',
+                      boxShadow: msg.role === 'user'
+                        ? '0 4px 20px rgba(0, 242, 254, 0.3)'
+                        : '0 4px 20px rgba(0, 0, 0, 0.2)',
+                    }}
                   >
-                    {msg.role === 'user' ? 'U' : 'AI'}
+                    {msg.role === 'user' ? (
+                      <span className="text-white">我</span>
+                    ) : (
+                      <Sparkles className="w-4 h-4 text-[#00F2FE]" />
+                    )}
                   </div>
+                  
+                  {/* Message Bubble - Gemini风格 */}
                   <div
-                    className={`max-w-[80%] rounded-2xl px-5 py-3.5 ${
+                    className={`max-w-[80%] rounded-2xl px-5 py-3.5 shadow-lg ${
                       msg.role === 'user'
-                        ? 'bg-cyan/10 text-white border border-cyan/20 rounded-tr-sm'
-                        : 'bg-white/5 text-secondary border border-white/10 rounded-tl-sm'
+                        ? 'rounded-tr-sm'
+                        : 'rounded-tl-sm'
                     }`}
+                    style={{
+                      background: msg.role === 'user'
+                        ? 'linear-gradient(135deg, rgba(0, 242, 254, 0.15), rgba(138, 43, 226, 0.15))'
+                        : 'rgba(255, 255, 255, 0.05)',
+                      border: msg.role === 'user'
+                        ? '1px solid rgba(0, 242, 254, 0.2)'
+                        : '1px solid rgba(255, 255, 255, 0.08)',
+                      boxShadow: msg.role === 'user'
+                        ? '0 4px 20px rgba(0, 242, 254, 0.1)'
+                        : '0 4px 20px rgba(0, 0, 0, 0.2)',
+                    }}
                   >
                     {msg.role === 'assistant' && msg.strategyName && (
                       <div className="mb-2">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan/10 border border-cyan/20 text-xs text-cyan">
-                          <svg
-                            className="w-3 h-3"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M13 10V3L4 14h7v7l9-11h-7z"
-                            />
-                          </svg>
+                        <span 
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+                          style={{
+                            background: 'rgba(0, 242, 254, 0.1)',
+                            border: '1px solid rgba(0, 242, 254, 0.2)',
+                            color: '#00F2FE',
+                          }}
+                        >
+                          <Sparkles className="w-3 h-3" />
                           {msg.strategyName}
                         </span>
                       </div>
@@ -630,36 +619,29 @@ const ChatPage: React.FC = () => {
                     {msg.role === 'assistant' ? (
                       <div
                         className="prose prose-invert prose-sm max-w-none
-                      prose-headings:text-white prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1.5
-                      prose-h1:text-lg prose-h2:text-base prose-h3:text-sm
-                      prose-p:leading-relaxed prose-p:mb-2 prose-p:last:mb-0
-                      prose-strong:text-white prose-strong:font-semibold
-                      prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5
-                      prose-code:text-cyan prose-code:bg-white/5 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
-                      prose-pre:bg-black/30 prose-pre:border prose-pre:border-white/10 prose-pre:rounded-lg prose-pre:p-3
-                      prose-table:w-full prose-table:text-sm
-                      prose-th:text-white prose-th:font-medium prose-th:border-white/20 prose-th:px-3 prose-th:py-1.5 prose-th:bg-white/5
-                      prose-td:border-white/10 prose-td:px-3 prose-td:py-1.5
-                      prose-hr:border-white/10 prose-hr:my-3
-                      prose-a:text-cyan prose-a:no-underline hover:prose-a:underline
-                      prose-blockquote:border-cyan/30 prose-blockquote:text-secondary
-                    "
+                        prose-headings:text-[rgba(255,255,255,0.9)] prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1.5
+                        prose-h1:text-lg prose-h2:text-base prose-h3:text-sm
+                        prose-p:leading-relaxed prose-p:mb-2 prose-p:last:mb-0 prose-p:text-[rgba(255,255,255,0.8)]
+                        prose-strong:text-[rgba(255,255,255,0.95)] prose-strong:font-semibold
+                        prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5
+                        prose-code:text-[#00F2FE] prose-code:bg-[rgba(0,242,254,0.1)] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
+                        prose-pre:bg-[rgba(0,0,0,0.3)] prose-pre:border prose-pre:border-[rgba(255,255,255,0.1)] prose-pre:rounded-xl prose-pre:p-3
+                        prose-table:w-full prose-table:text-sm
+                        prose-th:text-[rgba(255,255,255,0.9)] prose-th:font-medium prose-th:border-[rgba(255,255,255,0.1)] prose-th:px-3 prose-th:py-1.5 prose-th:bg-[rgba(255,255,255,0.05)]
+                        prose-td:border-[rgba(255,255,255,0.1)] prose-td:px-3 prose-td:py-1.5 prose-td:text-[rgba(255,255,255,0.7)]
+                        prose-hr:border-[rgba(255,255,255,0.1)] prose-hr:my-3
+                        prose-a:text-[#00F2FE] prose-a:no-underline hover:prose-a:underline
+                        prose-blockquote:border-l-2 prose-blockquote:border-[#00F2FE] prose-blockquote:text-[rgba(255,255,255,0.6)] prose-blockquote:pl-3
+                      "
                       >
                         <Markdown remarkPlugins={[remarkGfm]}>
                           {msg.content}
                         </Markdown>
                       </div>
                     ) : (
-                      msg.content
-                        .split('\n')
-                        .map((line, i) => (
-                          <p
-                            key={i}
-                            className="mb-1 last:mb-0 leading-relaxed"
-                          >
-                            {line || '\u00A0'}
-                          </p>
-                        ))
+                      <p className="text-[rgba(255,255,255,0.9)] leading-relaxed">
+                        {msg.content}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -668,18 +650,28 @@ const ChatPage: React.FC = () => {
 
             {loading && (
               <div className="flex gap-4">
-                <div className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center flex-shrink-0 text-xs font-bold">
-                  AI
+                <div 
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
+                  }}
+                >
+                  <Sparkles className="w-4 h-4 text-[#00F2FE]" />
                 </div>
-                <div className="bg-white/5 border border-white/10 rounded-2xl rounded-tl-sm px-5 py-4 min-w-[200px] max-w-[80%]">
-                  <div className="flex items-center gap-2.5 text-sm text-secondary">
-                    <div className="relative w-4 h-4 flex-shrink-0">
-                      <div className="absolute inset-0 rounded-full border-2 border-cyan/20" />
-                      <div className="absolute inset-0 rounded-full border-2 border-cyan border-t-transparent animate-spin" />
+                <div 
+                  className="rounded-2xl rounded-tl-sm px-5 py-4 min-w-[200px] max-w-[80%]"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
+                >
+                  <div className="flex items-center gap-3 text-sm text-[rgba(255,255,255,0.6)]">
+                    <div className="relative w-5 h-5 flex-shrink-0">
+                      <div className="absolute inset-0 rounded-full border-2 border-[rgba(0,242,254,0.2)]" />
+                      <div className="absolute inset-0 rounded-full border-2 border-[#00F2FE] border-t-transparent animate-spin" />
                     </div>
-                    <span className="text-secondary">
-                      {getCurrentStage(progressSteps)}
-                    </span>
+                    <span>{getCurrentStage(progressSteps)}</span>
                   </div>
                 </div>
               </div>
@@ -688,35 +680,48 @@ const ChatPage: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input area */}
-          <div className="p-4 md:p-6 border-t border-white/5 bg-black/20 relative z-20">
+          {/* Input area - Gemini风格 */}
+          <div className="p-4 md:p-5 relative z-20">
             {chatError ? (
               <ApiErrorAlert error={chatError} className="mb-3" />
             ) : null}
+            
+            {/* Strategy selection */}
             {strategies.length > 0 && (
-              <div className="mb-3 flex flex-wrap gap-x-5 gap-y-2 items-start">
-                <span className="text-xs text-muted font-medium uppercase tracking-wider flex-shrink-0 mt-1">
+              <div className="mb-3 flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-[rgba(255,255,255,0.4)] font-medium mr-2">
                   策略
                 </span>
-                <label className="flex items-center gap-1.5 text-sm cursor-pointer group mt-0.5">
+                <label 
+                  className={`cursor-pointer px-3 py-1.5 rounded-lg text-xs transition-all duration-200 border ${
+                    selectedStrategy === '' 
+                      ? 'bg-[rgba(0,242,254,0.15)] border-[rgba(0,242,254,0.3)] text-[#00F2FE]' 
+                      : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.1)] text-[rgba(255,255,255,0.5)] hover:border-[rgba(255,255,255,0.2)]'
+                  }`}
+                >
                   <input
                     type="radio"
                     name="strategy"
                     value=""
                     checked={selectedStrategy === ''}
                     onChange={() => setSelectedStrategy('')}
-                    className="w-3.5 h-3.5 accent-cyan"
+                    className="sr-only"
                   />
-                  <span
-                    className={`transition-colors text-sm ${selectedStrategy === '' ? 'text-white font-medium' : 'text-secondary group-hover:text-white'}`}
-                  >
+                  <span className="flex items-center gap-1.5">
+                    {selectedStrategy === '' && (
+                      <span className="w-1 h-1 rounded-full bg-[#00F2FE]" />
+                    )}
                     通用分析
                   </span>
                 </label>
                 {strategies.map((s) => (
                   <label
                     key={s.id}
-                    className="flex items-center gap-1.5 cursor-pointer group relative mt-0.5"
+                    className={`cursor-pointer relative px-3 py-1.5 rounded-lg text-xs transition-all duration-200 border ${
+                      selectedStrategy === s.id 
+                        ? 'bg-[rgba(0,242,254,0.15)] border-[rgba(0,242,254,0.3)] text-[#00F2FE]' 
+                        : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.1)] text-[rgba(255,255,255,0.5)] hover:border-[rgba(255,255,255,0.2)]'
+                    }`}
                     onMouseEnter={() => setShowStrategyDesc(s.id)}
                     onMouseLeave={() => setShowStrategyDesc(null)}
                   >
@@ -726,17 +731,26 @@ const ChatPage: React.FC = () => {
                       value={s.id}
                       checked={selectedStrategy === s.id}
                       onChange={() => setSelectedStrategy(s.id)}
-                      className="w-3.5 h-3.5 accent-cyan"
+                      className="sr-only"
                     />
-                    <span
-                      className={`transition-colors text-sm ${selectedStrategy === s.id ? 'text-white font-medium' : 'text-secondary group-hover:text-white'}`}
-                    >
+                    <span className="flex items-center gap-1.5">
+                      {selectedStrategy === s.id && (
+                        <span className="w-1 h-1 rounded-full bg-[#00F2FE]" />
+                      )}
                       {s.name}
                     </span>
                     {showStrategyDesc === s.id && s.description && (
-                      <div className="absolute left-0 bottom-full mb-2 z-50 w-64 p-2.5 rounded-lg bg-elevated border border-white/10 shadow-xl text-xs text-secondary leading-relaxed pointer-events-none animate-fade-in">
-                        <p className="font-medium text-white mb-1">{s.name}</p>
-                        <p>{s.description}</p>
+                      <div 
+                        className="absolute left-0 bottom-full mb-2 z-50 w-60 p-3 rounded-xl text-xs pointer-events-none"
+                        style={{
+                          background: 'rgba(16, 24, 36, 0.95)',
+                          backdropFilter: 'blur(10px)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+                        }}
+                      >
+                        <p className="font-medium text-[rgba(255,255,255,0.9)] mb-1">{s.name}</p>
+                        <p className="text-[rgba(255,255,255,0.5)]">{s.description}</p>
                       </div>
                     )}
                   </label>
@@ -744,64 +758,58 @@ const ChatPage: React.FC = () => {
               </div>
             )}
 
+            {/* Input box */}
             <div className="flex gap-3 items-end">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="例如：分析 600519 / 茅台现在适合买入吗？ (Enter 发送, Shift+Enter 换行)"
-                disabled={loading}
-                rows={1}
-                className="input-terminal flex-1 min-h-[44px] max-h-[200px] py-2.5 resize-none"
-                style={{ height: 'auto' }}
-                onInput={(e) => {
-                  const t = e.target as HTMLTextAreaElement;
-                  t.style.height = 'auto';
-                  t.style.height = `${Math.min(t.scrollHeight, 200)}px`;
-                }}
-              />
-              <button
-                onClick={() => handleSend()}
-                disabled={!input.trim() || loading}
-                className="btn-primary h-[44px] px-6 flex-shrink-0 flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <svg
-                    className="w-4 h-4 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                    />
-                  </svg>
-                )}
-                发送
-              </button>
+              <div className="flex-1 relative">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="输入消息..."
+                  disabled={loading}
+                  rows={1}
+                  className="w-full rounded-2xl py-3 px-4 pr-12 resize-none text-sm outline-none transition-all"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: 'rgba(255, 255, 255, 0.9)',
+                    minHeight: '48px',
+                    maxHeight: '200px',
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(0, 242, 254, 0.3)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                  }}
+                  onInput={(e) => {
+                    const t = e.target as HTMLTextAreaElement;
+                    t.style.height = 'auto';
+                    t.style.height = `${Math.min(t.scrollHeight, 200)}px`;
+                  }}
+                />
+                <button
+                  onClick={() => handleSend()}
+                  disabled={!input.trim() || loading}
+                  className="absolute right-2 bottom-2 w-9 h-9 rounded-xl flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-105"
+                  style={{
+                    background: input.trim() && !loading
+                      ? 'linear-gradient(135deg, #00F2FE, #8A2BE2)'
+                      : 'rgba(255, 255, 255, 0.1)',
+                    boxShadow: input.trim() && !loading
+                      ? '0 4px 15px rgba(0, 242, 254, 0.3)'
+                      : 'none',
+                  }}
+                >
+                  {loading ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4 text-white" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

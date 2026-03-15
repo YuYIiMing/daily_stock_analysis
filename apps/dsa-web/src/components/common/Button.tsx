@@ -1,121 +1,152 @@
 import React from 'react';
 
+/**
+ * Button Variants
+ * - aurora: Primary brand gradient (aurora blue #00F2FE)
+ * - nebula: Secondary brand gradient (neon purple #8A2BE2)
+ * - ghost: Transparent with subtle border
+ * - gradient: Dual-color gradient (aurora → neon)
+ * - danger: Error state
+ */
+type ButtonVariant = 'aurora' | 'nebula' | 'ghost' | 'gradient' | 'danger';
+
+type ButtonSize = 'sm' | 'md' | 'lg';
+
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'gradient' | 'danger';
-  size?: 'sm' | 'md' | 'lg';
+  /** Button visual variant */
+  variant?: ButtonVariant;
+  /** Button size */
+  size?: ButtonSize;
+  /** Show loading spinner */
   isLoading?: boolean;
-  glow?: boolean;
+  /** Full width button */
+  fullWidth?: boolean;
+  /** Custom className */
+  className?: string;
 }
 
+// Size styles
+const SIZE_STYLES = {
+  sm: 'px-3 py-1.5 text-xs rounded-xl gap-1.5',
+  md: 'px-5 py-2.5 text-sm rounded-xl gap-2',
+  lg: 'px-6 py-3 text-base rounded-xl gap-2.5',
+} as const;
+
+// Variant styles - Bento Glassmorphism design
+const VARIANT_STYLES: Record<ButtonVariant, string> = {
+  aurora: `
+    bg-gradient-to-br from-[#00F2FE] to-[#00D4E0]
+    text-[#050C16] font-semibold
+    hover:shadow-[0_4px_20px_rgba(0,242,254,0.3)] hover:-translate-y-0.5
+    active:translate-y-0
+  `,
+  nebula: `
+    bg-gradient-to-br from-[#8A2BE2] to-[#7B1FA2]
+    text-white font-semibold
+    hover:shadow-[0_4px_20px_rgba(138,43,226,0.3)] hover:-translate-y-0.5
+    active:translate-y-0
+  `,
+  ghost: `
+    bg-transparent
+    border border-[rgba(255,255,255,0.1)]
+    text-[rgba(255,255,255,0.7)] font-medium
+    hover:bg-[rgba(255,255,255,0.05)] hover:border-[rgba(255,255,255,0.2)] hover:text-white
+  `,
+  gradient: `
+    bg-gradient-to-r from-[#00F2FE] via-[#4facfe] to-[#8A2BE2]
+    text-white font-semibold
+    hover:shadow-[0_4px_20px_rgba(0,242,254,0.3)] hover:-translate-y-0.5
+    active:translate-y-0
+  `,
+  danger: `
+    bg-[#FF3D00]
+    text-white font-semibold
+    hover:shadow-[0_4px_20px_rgba(255,61,0,0.3)] hover:-translate-y-0.5
+    active:translate-y-0
+  `,
+};
+
+// Loading spinner component - defined outside render
+const LoadingSpinner = () => (
+  <svg
+    className="animate-spin -ml-1 h-4 w-4"
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    />
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+    />
+  </svg>
+);
+
 /**
- * 按钮组件
- * 支持多种变体和科技感样式
+ * Modern Button Component - Bento Glassmorphism Design
+ * 
+ * @example
+ * <Button variant="aurora">分析</Button>
+ * <Button variant="nebula">日报</Button>
+ * <Button variant="ghost" size="sm">取消</Button>
+ * <Button variant="aurora" isLoading>分析中...</Button>
  */
 export const Button: React.FC<ButtonProps> = ({
   children,
-  variant = 'primary',
+  variant = 'aurora',
   size = 'md',
   isLoading = false,
-  glow = false,
+  fullWidth = false,
   className = '',
   disabled,
   ...props
 }) => {
-  const baseStyle = `
+  // Base styles
+  const baseStyles = `
     inline-flex items-center justify-center
-    font-medium rounded-lg
+    font-medium
     transition-all duration-200
-    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900
+    focus:outline-none
     disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
+    will-change: transform, box-shadow
   `;
 
-  const sizeStyles = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2.5 text-sm',
-    lg: 'px-6 py-3 text-base',
-  };
-
-  const variantStyles = {
-    primary: `
-      bg-cyan-600 text-white
-      hover:bg-cyan-500
-      focus:ring-cyan-500
-      shadow-lg shadow-cyan-500/25
-    `,
-    secondary: `
-      bg-slate-700 text-gray-200
-      hover:bg-slate-600
-      focus:ring-slate-500
-      border border-slate-600
-    `,
-    outline: `
-      bg-transparent text-cyan-400
-      border border-cyan-500/30
-      hover:bg-cyan-500/10 hover:border-cyan-500/50
-      focus:ring-cyan-500
-    `,
-    ghost: `
-      bg-transparent text-gray-300
-      hover:bg-white/5 hover:text-white
-      focus:ring-gray-500
-    `,
-    gradient: `
-      bg-gradient-to-r from-cyan-500 to-blue-500 text-white
-      hover:from-cyan-400 hover:to-blue-400
-      focus:ring-cyan-500
-      shadow-lg shadow-cyan-500/25
-    `,
-    danger: `
-      bg-red-600 text-white
-      hover:bg-red-500
-      focus:ring-red-500
-      shadow-lg shadow-red-500/25
-    `,
-  };
-
-  const glowStyles = glow
-    ? 'shadow-glow-cyan hover:shadow-[0_0_30px_rgba(6,182,212,0.4)]'
-    : '';
+  // Width styles
+  const widthStyles = fullWidth ? 'w-full' : '';
 
   return (
     <button
       className={`
-        ${baseStyle}
-        ${sizeStyles[size]}
-        ${variantStyles[variant]}
-        ${glowStyles}
+        ${baseStyles}
+        ${SIZE_STYLES[size]}
+        ${VARIANT_STYLES[variant]}
+        ${widthStyles}
         ${className}
       `}
       disabled={disabled || isLoading}
+      aria-busy={isLoading}
+      aria-disabled={disabled || isLoading}
       {...props}
     >
       {isLoading ? (
-        <span className="flex items-center justify-center">
-          <svg
-            className="animate-spin -ml-1 mr-2 h-4 w-4 text-current"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-          处理中...
-        </span>
+        <>
+          <LoadingSpinner />
+          <span>加载中...</span>
+        </>
       ) : (
         children
       )}
     </button>
   );
 };
+
+export default Button;

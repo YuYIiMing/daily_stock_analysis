@@ -1,36 +1,46 @@
 import React from 'react';
 
-type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'history';
+/**
+ * Badge Variants
+ * - aurora: Primary brand color (cyan)
+ * - nebula: Secondary brand color (purple)
+ * - success: Green for positive states
+ * - warning: Yellow/Orange for caution
+ * - danger: Red for errors/negative
+ * - default: Neutral gray
+ */
+type BadgeVariant = 
+  | 'aurora' 
+  | 'nebula' 
+  | 'success' 
+  | 'warning' 
+  | 'danger' 
+  | 'default';
+
+type BadgeSize = 'sm' | 'md';
 
 interface BadgeProps {
+  /** Badge content */
   children: React.ReactNode;
+  /** Visual variant */
   variant?: BadgeVariant;
-  size?: 'sm' | 'md';
+  /** Size variant */
+  size?: BadgeSize;
+  /** Add glow effect */
   glow?: boolean;
+  /** Custom className */
   className?: string;
+  /** Click handler */
+  onClick?: () => void;
 }
 
-const variantStyles: Record<BadgeVariant, string> = {
-  default: 'bg-slate-700/50 text-gray-300 border-slate-600/50',
-  success: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  warning: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  danger: 'bg-red-500/20 text-red-400 border-red-500/30',
-  info: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  history: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-};
-
-const glowStyles: Record<BadgeVariant, string> = {
-  default: '',
-  success: 'shadow-emerald-500/20',
-  warning: 'shadow-amber-500/20',
-  danger: 'shadow-red-500/20',
-  info: 'shadow-cyan-500/20',
-  history: 'shadow-purple-500/20',
-};
-
 /**
- * 标签徽章组件
- * 支持多种变体和发光效果
+ * Modern Badge Component
+ * 
+ * @example
+ * <Badge variant="aurora" glow>NEW</Badge>
+ * <Badge variant="success">+12.5%</Badge>
+ * <Badge variant="danger" size="md">Error</Badge>
  */
 export const Badge: React.FC<BadgeProps> = ({
   children,
@@ -38,21 +48,80 @@ export const Badge: React.FC<BadgeProps> = ({
   size = 'sm',
   glow = false,
   className = '',
+  onClick,
 }) => {
-  const sizeStyles = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm';
+  // Size styles
+  const sizeStyles = size === 'sm' 
+    ? 'px-2 py-0.5 text-xs' 
+    : 'px-3 py-1 text-sm';
+
+  // Variant styles
+  const variantStyles: Record<BadgeVariant, string> = {
+    aurora: `
+      bg-brand-primary/10 
+      text-brand-primary 
+      border border-brand-primary/20
+    `,
+    nebula: `
+      bg-brand-secondary/10 
+      text-brand-secondary-light 
+      border border-brand-secondary/20
+    `,
+    success: `
+      bg-semantic-success/10 
+      text-semantic-success 
+      border border-semantic-success/20
+    `,
+    warning: `
+      bg-semantic-warning/10 
+      text-semantic-warning 
+      border border-semantic-warning/20
+    `,
+    danger: `
+      bg-semantic-danger/10 
+      text-semantic-danger 
+      border border-semantic-danger/20
+    `,
+    default: `
+      bg-surface-5 
+      text-content-secondary 
+      border border-white/10
+    `,
+  };
+
+  // Glow styles
+  const glowStyles: Record<BadgeVariant, string> = {
+    aurora: 'shadow-glow-primary',
+    nebula: 'shadow-glow-secondary',
+    success: 'shadow-glow-success',
+    warning: '',
+    danger: 'shadow-glow-danger',
+    default: '',
+  };
+
+  // Clickable styles
+  const clickableStyles = onClick 
+    ? 'cursor-pointer hover:opacity-80 active:opacity-60' 
+    : '';
 
   return (
     <span
       className={`
-        inline-flex items-center gap-1 rounded-full font-medium
-        border backdrop-blur-sm
+        inline-flex items-center gap-1 
+        rounded-full font-medium
+        backdrop-blur-sm
         ${sizeStyles}
         ${variantStyles[variant]}
-        ${glow ? `shadow-lg ${glowStyles[variant]}` : ''}
+        ${glow ? glowStyles[variant] : ''}
+        ${clickableStyles}
         ${className}
       `}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
     >
       {children}
     </span>
   );
 };
+
+export default Badge;

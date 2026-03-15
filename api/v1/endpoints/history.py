@@ -26,6 +26,7 @@ from api.v1.schemas.history import (
     ReportStrategy,
     ReportDetails,
     MarkdownReportResponse,
+    DeleteResponse,
 )
 from api.v1.schemas.common import ErrorResponse
 from src.storage import DatabaseManager
@@ -167,17 +168,23 @@ def get_history_detail(
         change_pct = None
         context_snapshot = result.get("context_snapshot")
         if context_snapshot and isinstance(context_snapshot, dict):
-            # 尝试从 enhanced_context.realtime 获取
+            # 方式1: enhanced_context.realtime (标准快照格式)
             enhanced_context = context_snapshot.get("enhanced_context") or {}
             realtime = enhanced_context.get("realtime") or {}
             current_price = realtime.get("price")
             change_pct = realtime.get("change_pct") or realtime.get("change_60d")
             
-            # 也尝试从 realtime_quote_raw 获取
+            # 方式2: realtime_quote_raw (标准快照格式)
             if current_price is None:
                 realtime_quote_raw = context_snapshot.get("realtime_quote_raw") or {}
                 current_price = realtime_quote_raw.get("price")
                 change_pct = change_pct or realtime_quote_raw.get("change_pct") or realtime_quote_raw.get("pct_chg")
+            
+            # 方式3: realtime_quote (Agent模式直接存储格式)
+            if current_price is None:
+                realtime_quote = context_snapshot.get("realtime_quote") or {}
+                current_price = realtime_quote.get("price")
+                change_pct = realtime_quote.get("change_pct") or realtime_quote.get("change_60d")
         
         # 构建响应模型
         meta = ReportMeta(
@@ -355,3 +362,63 @@ def get_history_markdown(
         )
 
     return MarkdownReportResponse(content=markdown_content)
+
+
+@router.delete(
+    "/{record_id}",
+    response_model=DeleteResponse,
+    responses={
+        200: {"description": "删除成功"},
+        404: {"description": "记录不存在", "model": ErrorResponse},
+        500: {"description": "服务器错误", "model": ErrorResponse},
+    },
+    summary="删除分析历史记录",
+    description="根据分析历史记录 ID 删除记录（物理删除，不可恢复）"
+)
+def delete_history(
+    record_id: int,
+    db_manager: DatabaseManager = Depends(get_database_manager)
+) -> DeleteResponse:
+    """
+    Delete an analysis history record.
+
+    Permanently deletes the specified analysis_history record and its
+    associated backtest_results. News_intel records are preserved.
+
+    Args:
+        record_id: The primary key ID of the analysis_history record
+        db_manager: Database manager dependency
+
+    Returns:
+        DeleteResponse: Operation result
+
+    Raises:
+        HTTPException: 404 - Record not found
+        HTTPException: 500 - Delete operation failed
+    """
+    try:
+        service = HistoryService(db_manager)
+        success, message = service.delete_history(record_id)
+
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "not_found",
+                    "message": message
+                }
+            )
+
+        return DeleteResponse(success=True, message=message)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除分析记录失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": f"删除分析记录失败: {str(e)}"
+            }
+        )

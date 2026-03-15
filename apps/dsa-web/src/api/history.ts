@@ -77,4 +77,16 @@ export const historyApi = {
     const response = await apiClient.get<{ content: string }>(`/api/v1/history/${recordId}/markdown`);
     return response.data.content;
   },
+
+  /**
+   * Delete an analysis history record.
+   * @param recordId analysis history record primary key ID
+   * @returns deletion result
+   */
+  deleteRecord: async (recordId: number): Promise<{ success: boolean; message: string }> => {
+    const response = await apiClient.delete<{ success: boolean; message: string }>(
+      `/api/v1/history/${recordId}`
+    );
+    return response.data;
+  },
 };
