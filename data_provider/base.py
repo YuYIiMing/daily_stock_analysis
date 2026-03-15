@@ -276,11 +276,11 @@ class BaseFetcher(ABC):
 
         Returns:
             Dict with change_1d, change_5d, strength_score, etc.
-            Returns {'name': sector_name, 'strength_score': 50} on failure.
+            None if data unavailable.
         """
-        return {'name': sector_name, 'strength_score': 50}
+        return None
 
-    def get_stock_sectors(self, stock_code: str) -> List[str]:
+    def get_stock_sectors(self, stock_code: str) -> Optional[List[str]]:
         """
         Get stock's primary industry sector (Plan A: main industry only).
 
@@ -289,9 +289,10 @@ class BaseFetcher(ABC):
 
         Returns:
             List containing primary industry name, e.g., ["白酒"]
-            Empty list on failure.
+            None if data unavailable.
+            [] if stock has no industry info.
         """
-        return []
+        return None
 
     def get_daily_data(
         self,
@@ -1156,30 +1157,47 @@ class DataFetcherManager:
                 continue
         return [], []
 
-    def get_sector_history(self, sector_name: str, days: int = 10) -> Dict[str, Any]:
-        """Get sector historical data for strength calculation."""
+    def get_sector_history(self, sector_name: str, days: int = 10) -> Optional[Dict[str, Any]]:
+        """Get sector historical data for strength calculation.
+        
+        Returns:
+            Dict with sector data on success.
+            None if all fetchers fail (data unavailable).
+        """
+        last_error = None
         for fetcher in self._fetchers:
             try:
                 if hasattr(fetcher, 'get_sector_history'):
                     data = fetcher.get_sector_history(sector_name, days)
-                    if data:
+                    if data is not None:
                         logger.debug(f"[{fetcher.name}] 获取板块历史成功: {sector_name}")
                         return data
             except Exception as e:
+                last_error = e
                 logger.debug(f"[{fetcher.name}] 获取板块历史失败: {sector_name}, {e}")
                 continue
-        return {'name': sector_name, 'strength_score': 50}
+        logger.warning(f"[DataFetcher] 所有数据源获取板块历史失败: {sector_name}, last_error={last_error}")
+        return None
 
-    def get_stock_sectors(self, stock_code: str) -> List[str]:
-        """Get stock's primary industry sector."""
+    def get_stock_sectors(self, stock_code: str) -> Optional[List[str]]:
+        """Get stock's primary industry sector.
+        
+        Returns:
+            List containing primary industry name on success.
+            None if all fetchers fail (data unavailable).
+            [] if stock has no industry info.
+        """
+        last_error = None
         for fetcher in self._fetchers:
             try:
                 if hasattr(fetcher, 'get_stock_sectors'):
                     sectors = fetcher.get_stock_sectors(stock_code)
-                    if sectors:
+                    if sectors is not None:
                         logger.debug(f"[{fetcher.name}] 获取股票行业成功: {stock_code} -> {sectors}")
                         return sectors
             except Exception as e:
+                last_error = e
                 logger.debug(f"[{fetcher.name}] 获取股票行业失败: {stock_code}, {e}")
                 continue
-        return []
+        logger.warning(f"[DataFetcher] 所有数据源获取股票行业失败: {stock_code}, last_error={last_error}")
+        return None

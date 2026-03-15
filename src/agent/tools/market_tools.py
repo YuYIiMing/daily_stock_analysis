@@ -172,10 +172,12 @@ def _handle_get_sector_strength(stock_code: str) -> dict:
     
     Returns:
         - name: Sector/industry name
-        - strength_score: 0-100
+        - strength_score: 0-100 (or None if unavailable)
         - change_5d: 5-day change percentage
         - is_leader: True if in top gaining sectors
         - is_laggard: True if in bottom losing sectors
+        - data_available: True if data was fetched successfully
+        - message: Error message if data_available is False
     """
     from src.services.market_service import MarketService
     
@@ -186,6 +188,14 @@ def _handle_get_sector_strength(stock_code: str) -> dict:
     
     result = service.get_sector_strength(stock_code, market_context)
     
+    # If data is unavailable, return a clear message
+    if not result.get('data_available'):
+        return {
+            'error': result.get('message', '板块数据暂时不可用'),
+            'data_available': False,
+            'stock_code': stock_code,
+        }
+    
     return result
 
 
@@ -195,7 +205,8 @@ get_sector_strength_tool = ToolDefinition(
                 "Returns strength_score (0-100), 5-day change, and whether the sector "
                 "is in top/bottom rankings. Use after get_market_context to evaluate "
                 "sector health. Rules: score>=70 allows buy, score<50 requires caution, "
-                "score<30 forbids buy.",
+                "score<30 forbids buy. If data_available is False, the sector data is "
+                "temporarily unavailable and should not affect the analysis score.",
     parameters=[
         ToolParameter(
             name="stock_code",

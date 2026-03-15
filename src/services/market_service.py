@@ -65,7 +65,12 @@ class MarketService:
     _instance = None
     _cache: Optional[Dict[str, Any]] = None
     _cache_time: float = 0
-    _cache_ttl: int = 3600  # 1 hour default
+    _cache_ttl: int = 3600  # 1 hour default for market context
+    
+    # Sector data cache (24h TTL)
+    _sector_cache: Dict[str, Any] = {}
+    _sector_cache_time: Dict[str, float] = {}
+    _SECTOR_CACHE_TTL: int = 86400  # 24 hours
     
     def __new__(cls):
         if cls._instance is None:
@@ -248,6 +253,8 @@ class MarketService:
         """
         Get sector strength for a stock (Plan A: main industry only).
         
+        Uses 24h cache to avoid repeated API calls.
+        
         Args:
             stock_code: Stock code
             market_context: Market context with top/bottom sectors
@@ -255,50 +262,94 @@ class MarketService:
         Returns:
             {
                 'name': '行业名称',
-                'strength_score': 50,
+                'strength_score': 50,  # or None if unavailable
                 'change_5d': 5.2,
                 'is_leader': False,
                 'is_laggard': False,
+                'data_available': True,  # False if data unavailable
+                'message': None,  # Error message if data_available is False
             }
         """
-        if not market_context:
-            return {'strength_score': 50}
+        # Check cache first
+        cache_key = f"sector:{stock_code}"
+        if cache_key in self._sector_cache:
+            cached_time = self._sector_cache_time.get(cache_key, 0)
+            if time.time() - cached_time < self._SECTOR_CACHE_TTL:
+                logger.debug(f"[Sector] Cache hit for {stock_code}")
+                return self._sector_cache[cache_key]
+        
+        # Default result structure
+        result = {
+            'name': None,
+            'strength_score': None,
+            'change_5d': None,
+            'is_leader': False,
+            'is_laggard': False,
+            'data_available': False,
+            'message': None
+        }
         
         # Get stock's primary industry
         try:
             sectors = self.fetcher_manager.get_stock_sectors(stock_code)
+            
+            if sectors is None:
+                # API failed after retries
+                result['message'] = '板块数据暂时不可用'
+                logger.warning(f"[Sector] Failed to get industry for {stock_code} after retries")
+                return result
+            
             if not sectors:
+                # Stock has no industry info
+                result['message'] = '未找到行业信息'
                 logger.debug(f"[Sector] No industry found for {stock_code}")
-                return {'strength_score': 50}
+                return result
             
             sector_name = sectors[0]  # Plan A: main industry only
+            result['name'] = sector_name
             logger.debug(f"[Sector] {stock_code} primary industry: {sector_name}")
+            
         except Exception as e:
-            logger.warning(f"[Sector] Failed to get industry for {stock_code}: {e}")
-            return {'strength_score': 50}
+            result['message'] = '板块数据暂时不可用'
+            logger.warning(f"[Sector] Exception getting industry for {stock_code}: {e}")
+            return result
         
         # Get sector historical data
         try:
             sector_data = self.fetcher_manager.get_sector_history(sector_name, days=10)
-            if not sector_data:
-                return {'name': sector_name, 'strength_score': 50}
+            
+            if sector_data is None:
+                # API failed after retries
+                result['message'] = '板块数据暂时不可用'
+                logger.warning(f"[Sector] Failed to get sector history for {sector_name} after retries")
+                return result
             
             # Check if in top/bottom sectors
-            top_sectors = market_context.get('top_sectors', [])
-            bottom_sectors = market_context.get('bottom_sectors', [])
+            top_sectors = market_context.get('top_sectors', []) if market_context else []
+            bottom_sectors = market_context.get('bottom_sectors', []) if market_context else []
             is_leader = any(s.get('name') == sector_name for s in top_sectors)
             is_laggard = any(s.get('name') == sector_name for s in bottom_sectors)
             
-            return {
-                'name': sector_name,
+            result.update({
                 'strength_score': sector_data.get('strength_score', 50),
                 'change_5d': sector_data.get('change_5d'),
                 'is_leader': is_leader,
                 'is_laggard': is_laggard,
-            }
+                'data_available': True,
+            })
+            
+            # Cache the result
+            self._sector_cache[cache_key] = result
+            self._sector_cache_time[cache_key] = time.time()
+            
+            logger.info(f"[Sector] {stock_code} sector strength: {sector_name} ({result['strength_score']})")
+            
+            return result
+            
         except Exception as e:
-            logger.warning(f"[Sector] Failed to get sector history for {sector_name}: {e}")
-            return {'name': sector_name, 'strength_score': 50}
+            result['message'] = '板块数据暂时不可用'
+            logger.warning(f"[Sector] Exception getting sector history for {sector_name}: {e}")
+            return result
 
 
 # ============================================================

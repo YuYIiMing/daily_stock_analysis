@@ -541,7 +541,10 @@ class StockAnalysisPipeline:
                 sector_data = self._get_sector_strength(stock_code, market_context)
                 if sector_data:
                     enhanced['sector'] = sector_data
-                    logger.debug(f"[Sector] {stock_code} sector strength: {sector_data.get('name', 'N/A')} ({sector_data.get('strength_score', 50)})")
+                    if sector_data.get('data_available'):
+                        logger.debug(f"[Sector] {stock_code} sector strength: {sector_data.get('name', 'N/A')} ({sector_data.get('strength_score', 'N/A')})")
+                    else:
+                        logger.warning(f"[Sector] {stock_code} sector data unavailable: {sector_data.get('message', 'Unknown')}")
             except Exception as e:
                 logger.warning(f"[Sector] Failed to get sector strength for {stock_code}: {e}")
 
@@ -781,12 +784,14 @@ class StockAnalysisPipeline:
         Returns:
             {
                 'name': '行业名称',
-                'strength_score': 50,  # 0-100
+                'strength_score': 50,  # 0-100, or None if unavailable
                 'change_5d': 5.2,      # 5-day change %
                 'is_leader': False,    # in top_sectors
                 'is_laggard': False,   # in bottom_sectors
+                'data_available': True,  # False if data unavailable
+                'message': None,       # Error message if unavailable
             }
-            or None on failure
+            or {'strength_score': None, 'data_available': False} on failure
         """
         try:
             market_service = MarketService()
@@ -794,7 +799,11 @@ class StockAnalysisPipeline:
             return result
         except Exception as e:
             logger.warning(f"[Sector] Failed to get sector strength for {stock_code}: {e}")
-            return {'strength_score': 50}
+            return {
+                'strength_score': None,
+                'data_available': False,
+                'message': '板块数据暂时不可用'
+            }
     
     def _describe_volume_ratio(self, volume_ratio: float) -> str:
         """
