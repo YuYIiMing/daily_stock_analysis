@@ -178,6 +178,64 @@ def fill_chip_structure_if_needed(result: "AnalysisResult", chip_data: Any) -> N
         logger.warning("[chip_structure] Fill failed, skipping: %s", e)
 
 
+def apply_bear_market_constraints(result: "AnalysisResult", market_context: Optional[Dict[str, Any]]) -> "AnalysisResult":
+    """
+    Apply hard constraints for bear market regime.
+    
+    When market.regime = "bear":
+    - Limit sentiment_score to max 65
+    - Forbid "强烈买入", "加仓", "买入" in operation_advice
+    - Force add risk warning in core_conclusion
+    
+    Args:
+        result: Analysis result to modify in-place
+        market_context: Market context dict with 'regime' key
+    
+    Returns:
+        Modified result (same object, modified in-place)
+    """
+    if not market_context:
+        return result
+    
+    regime = market_context.get('regime', 'range')
+    if regime != 'bear':
+        return result
+    
+    # Score ceiling: max 65 in bear market
+    if result.sentiment_score is not None and result.sentiment_score > 65:
+        original_score = result.sentiment_score
+        result.sentiment_score = 65
+        logger.info(f"[Bear Rule] Score ceiling: {original_score} -> 65")
+    
+    # Operation advice constraints
+    forbidden_advice = ['强烈买入', '加仓', '买入']
+    if result.operation_advice in forbidden_advice:
+        # Check if ETF - allow "定投"
+        is_etf = False
+        if result.dashboard and isinstance(result.dashboard, dict):
+            market = result.dashboard.get('market', {})
+            if isinstance(market, dict) and market.get('is_index_etf'):
+                is_etf = True
+        
+        if is_etf:
+            result.operation_advice = '定投'
+            logger.info(f"[Bear Rule] ETF advice changed to: 定投")
+        else:
+            result.operation_advice = '观望'
+            logger.info(f"[Bear Rule] Advice changed to: 观望")
+    
+    # Force risk warning in core_conclusion
+    if result.dashboard and isinstance(result.dashboard, dict):
+        core = result.dashboard.get('core_conclusion')
+        if core and isinstance(core, dict):
+            one_sentence = core.get('one_sentence', '')
+            if '大盘弱势' not in one_sentence and '风险' not in one_sentence:
+                core['one_sentence'] = f"⚠️ 当前大盘弱势，风险偏好降低。{one_sentence}"
+                logger.info("[Bear Rule] Added bear market warning to core_conclusion")
+    
+    return result
+
+
 def get_stock_name_multi_source(
     stock_code: str,
     context: Optional[Dict] = None,
@@ -519,6 +577,56 @@ class GeminiAnalyzer:
   - "基于量价推导：结构一般（理由：多头排列但乖离率偏低）"
   - "基于量价推导：松动（理由：横盘但放量异常）"
   - "基于量价推导：散乱（理由：空头排列且远离MA20）"
+
+### 10. 大盘环境硬规则（必须严格遵守）
+
+#### 10.1 乖离率阈值动态调整
+根据系统注入的 market.regime 字段，动态调整乖离率上限：
+
+| 大盘状态 | regime 值 | 乖离率上限 | 规则 |
+|----------|-----------|-----------|------|
+| 牛市     | bull      | < 8%      | 可适度追涨，强势股放宽 |
+| 震荡     | range     | < 5%      | 标准要求 |
+| 熊市     | bear      | < 3%      | 严格不追高，风险优先 |
+
+**判定逻辑**：分析时必须将当前乖离率与此阈值对比，超过即判定为"严禁追高"。
+
+#### 10.2 大盘状态判定标准
+系统会注入以下字段：
+- market.regime: bull/bear/range（由系统自动判定）
+- market.strength_score: 0-100（大盘强度评分）
+- market.sh_index.change_pct: 上证指数涨跌幅
+
+#### 10.3 熊市交易限制（强制执行）
+当 market.regime = "bear" 时：
+
+**评分约束**：
+- sentiment_score 最高不超过 65 分
+- 即使技术面完美，也禁止判定为"强烈买入"
+
+**操作建议约束**：
+- operation_advice 禁止输出："强烈买入"、"加仓"、"买入"
+- 仅允许输出："观望"、"减仓"、"卖出"、"持有（已有仓位）"
+
+**输出格式强制**：
+- 在 dashboard.core_conclusion.one_sentence 中必须包含："⚠️ 当前大盘弱势，风险偏好降低"
+
+**ETF 例外**：
+- 若 is_index_etf = true，可放宽为"定投"建议（熊市定投宽基指数）
+
+#### 10.4 板块联动规则
+当个股所属板块在 market 中出现时：
+
+- market.top_sectors 包含个股所属板块：在 positive_catalysts 中标注"板块强势"
+- market.bottom_sectors 包含个股所属板块：在 risk_alerts 中标注"板块弱势"
+
+#### 10.5 板块强度评分规则
+当系统注入 sector.strength_score 时：
+
+- strength_score >= 70：允许买入，板块强势
+- strength_score 50-70：正常评估
+- strength_score < 50：谨慎观望，在 risk_alerts 中标注"板块走势偏弱"
+- strength_score < 30：禁止买入（除非股价已大幅下跌），标注"板块极弱"
 
 ## 输出格式：决策仪表盘 JSON
 
@@ -991,6 +1099,10 @@ class GeminiAnalyzer:
                     )
                     break
 
+            # Apply bear market hard constraints (Phase 2)
+            if 'market' in context:
+                result = apply_bear_market_constraints(result, context['market'])
+
             persist_llm_usage(llm_usage, model_used, call_type="analysis", stock_code=code)
 
             logger.info(f"[LLM解析] {name}({code}) 分析完成: {result.trend_prediction}, 评分 {result.sentiment_score}")
@@ -1136,6 +1248,63 @@ class GeminiAnalyzer:
 ### 量价变化
 - 成交量较昨日变化：{volume_change}倍
 - 价格较昨日变化：{context.get('price_change_ratio', 'N/A')}%
+"""
+        
+        # 注入大盘环境数据（Phase 1）
+        if 'market' in context:
+            market = context['market']
+            regime = market.get('regime', 'range')
+            strength = market.get('strength_score', 50)
+            sh_idx = market.get('sh_index', {})
+            sh_change = sh_idx.get('change_pct', 'N/A')
+            breadth = market.get('breadth', {})
+            up_count = breadth.get('up_count', 0)
+            down_count = breadth.get('down_count', 0)
+            total_count = up_count + down_count
+            up_ratio = f"{up_count / total_count * 100:.1f}%" if total_count > 0 else "N/A"
+            
+            regime_display = {'bull': '牛市 📈', 'bear': '熊市 📉', 'range': '震荡 ↔️'}.get(regime, '震荡')
+            
+            prompt += f"""
+---
+
+## 📊 大盘环境
+
+| 指标 | 数值 |
+|------|------|
+| 大盘状态 | **{regime_display}** |
+| 强度评分 | {strength}/100 |
+| 上证指数涨跌 | {sh_change}% |
+| 涨跌比 | {up_ratio}（{up_count}涨/{down_count}跌）|
+
+### 板块异动
+"""
+            top_sectors = market.get('top_sectors', [])
+            bottom_sectors = market.get('bottom_sectors', [])
+            
+            if top_sectors or bottom_sectors:
+                prompt += "| 领涨板块 | 涨幅 | 领跌板块 | 跌幅 |\n|----------|------|----------|------|\n"
+                for i in range(max(len(top_sectors), len(bottom_sectors))):
+                    top = top_sectors[i] if i < len(top_sectors) else {}
+                    bottom = bottom_sectors[i] if i < len(bottom_sectors) else {}
+                    top_name = top.get('name', '-') if top else '-'
+                    top_pct = f"{top.get('change_pct', 0):+.2f}%" if top.get('change_pct') is not None else '-'
+                    bot_name = bottom.get('name', '-') if bottom else '-'
+                    bot_pct = f"{bottom.get('change_pct', 0):+.2f}%" if bottom.get('change_pct') is not None else '-'
+                    prompt += f"| {top_name} | {top_pct} | {bot_name} | {bot_pct} |\n"
+            else:
+                prompt += "_暂无板块异动数据_\n"
+            
+            # Add regime-specific instructions
+            if regime == 'bear':
+                prompt += """
+> ⚠️ **熊市规则生效**：当前大盘弱势，乖离率上限降至3%，评分上限65分，禁止"强烈买入"建议。
+
+"""
+            elif regime == 'bull':
+                prompt += """
+> 📈 **牛市规则生效**：当前大盘强势，乖离率上限放宽至8%，可适度追涨强势股。
+
 """
         
         # 添加新闻搜索结果（重点区域）

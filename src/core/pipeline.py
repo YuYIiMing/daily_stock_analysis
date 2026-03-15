@@ -32,6 +32,7 @@ from src.search_service import SearchService
 from src.enums import ReportType
 from src.stock_analyzer import StockTrendAnalyzer, TrendAnalysisResult
 from src.core.trading_calendar import get_market_for_stock, is_market_open
+from src.services.market_service import MarketService
 from bot.models import BotMessage
 
 
@@ -106,6 +107,11 @@ class StockAnalysisPipeline:
             logger.info("搜索服务已启用 (Tavily/SerpAPI)")
         else:
             logger.warning("搜索服务未启用（未配置 API Key）")
+        
+        # Market data cache (deprecated: MarketService handles caching via singleton pattern)
+        self._market_cache: Optional[Dict[str, Any]] = None
+        self._market_cache_time: float = 0
+        self._market_cache_ttl: int = 3600
     
     def fetch_and_save_stock_data(
         self, 
@@ -303,13 +309,21 @@ class StockAnalysisPipeline:
                     'yesterday': {}
                 }
             
-            # Step 6: 增强上下文数据（添加实时行情、筹码、趋势分析结果、股票名称）
+            # Step 5.5: Get market context (Phase 1 - Market Environment Factor)
+            market_context = None
+            try:
+                market_context = self._get_market_context()
+            except Exception as e:
+                logger.warning(f"{stock_name}({code}) Failed to get market context: {e}")
+            
+            # Step 6: 增强上下文数据（添加实时行情、筹码、趋势分析结果、股票名称、大盘环境）
             enhanced_context = self._enhance_context(
                 context, 
                 realtime_quote, 
                 chip_data, 
                 trend_result,
-                stock_name  # 传入股票名称
+                stock_name,  # 传入股票名称
+                market_context,  # 传入大盘环境数据
             )
             
             # Step 7: 调用 AI 分析（传入增强的上下文和新闻）
@@ -359,12 +373,13 @@ class StockAnalysisPipeline:
         realtime_quote,
         chip_data: Optional[ChipDistribution],
         trend_result: Optional[TrendAnalysisResult],
-        stock_name: str = ""
+        stock_name: str = "",
+        market_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         增强分析上下文
         
-        将实时行情、筹码分布、趋势分析结果、股票名称添加到上下文中
+        将实时行情、筹码分布、趋势分析结果、股票名称、大盘环境添加到上下文中
         
         Args:
             context: 原始上下文
@@ -372,6 +387,7 @@ class StockAnalysisPipeline:
             chip_data: 筹码分布数据
             trend_result: 趋势分析结果
             stock_name: 股票名称
+            market_context: 大盘环境数据（可选）
             
         Returns:
             增强后的上下文
@@ -499,6 +515,35 @@ class StockAnalysisPipeline:
         enhanced['is_index_etf'] = SearchService.is_index_or_etf(
             context.get('code', ''), enhanced.get('stock_name', stock_name)
         )
+
+        # Market context injection (Phase 1)
+        if market_context:
+            enhanced['market'] = {
+                'regime': market_context.get('trend_regime', 'range'),
+                'strength_score': market_context.get('strength_score', 50),
+                'breadth': market_context.get('market_breadth', {}),
+                'top_sectors': market_context.get('top_sectors', [])[:3],
+                'bottom_sectors': market_context.get('bottom_sectors', [])[:3],
+            }
+            # Extract Shanghai index key data
+            for idx in market_context.get('indices', []):
+                if idx.get('code') == 'sh000001':
+                    enhanced['market']['sh_index'] = {
+                        'current': idx.get('current'),
+                        'change_pct': idx.get('change_pct'),
+                    }
+                    break
+
+        # Sector strength injection (Phase 3)
+        if market_context:
+            stock_code = context.get('code', '')
+            try:
+                sector_data = self._get_sector_strength(stock_code, market_context)
+                if sector_data:
+                    enhanced['sector'] = sector_data
+                    logger.debug(f"[Sector] {stock_code} sector strength: {sector_data.get('name', 'N/A')} ({sector_data.get('strength_score', 50)})")
+            except Exception as e:
+                logger.warning(f"[Sector] Failed to get sector strength for {stock_code}: {e}")
 
         return enhanced
 
@@ -674,6 +719,82 @@ class StockAnalysisPipeline:
             if match:
                 return int(match.group())
         return default
+    
+    # ========================================
+    # Market Context Methods (Phase 1)
+    # ========================================
+    
+    def _get_market_context(self, region: str = "cn") -> Dict[str, Any]:
+        """
+        Get market context data (indices, breadth, sector rankings).
+        
+        Uses MarketService singleton with cache TTL to avoid repeated API calls.
+        
+        Args:
+            region: Market region ("cn" for A-shares)
+        
+        Returns:
+            {
+                'indices': [...],           # Main index quotes
+                'market_breadth': {...},    # Up/down/limit stats
+                'top_sectors': [...],       # Top gainers
+                'bottom_sectors': [...],    # Top losers
+                'trend_regime': 'bull/bear/range',
+                'strength_score': 0-100,
+            }
+        """
+        try:
+            market_service = MarketService()
+            result = market_service.get_market_context(region=region, use_cache=True)
+            
+            # Map 'regime' to 'trend_regime' for backward compatibility
+            if 'regime' in result:
+                result['trend_regime'] = result['regime']
+            
+            logger.info(f"[Market] Market context updated: regime={result.get('trend_regime', 'range')}, strength={result.get('strength_score', 50)}")
+            return result
+        except Exception as e:
+            logger.warning(f"[Market] Failed to get market context: {e}")
+            return {
+                'indices': [],
+                'market_breadth': {},
+                'top_sectors': [],
+                'bottom_sectors': [],
+                'trend_regime': 'range',
+                'strength_score': 50,
+            }
+    
+    def _get_sector_strength(
+        self, 
+        stock_code: str, 
+        market_context: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get sector strength for a stock (Plan A: main industry only).
+        
+        Uses MarketService singleton for data.
+        
+        Args:
+            stock_code: Stock code
+            market_context: Market context with top/bottom sectors
+        
+        Returns:
+            {
+                'name': '行业名称',
+                'strength_score': 50,  # 0-100
+                'change_5d': 5.2,      # 5-day change %
+                'is_leader': False,    # in top_sectors
+                'is_laggard': False,   # in bottom_sectors
+            }
+            or None on failure
+        """
+        try:
+            market_service = MarketService()
+            result = market_service.get_sector_strength(stock_code, market_context)
+            return result
+        except Exception as e:
+            logger.warning(f"[Sector] Failed to get sector strength for {stock_code}: {e}")
+            return {'strength_score': 50}
     
     def _describe_volume_ratio(self, volume_ratio: float) -> str:
         """

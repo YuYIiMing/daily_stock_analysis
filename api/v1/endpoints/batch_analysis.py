@@ -215,7 +215,7 @@ def trigger_batch_analysis(
                 results = pipeline.run(
                     stock_codes=stock_list,
                     dry_run=False,
-                    send_notification=(mode == 'stocks_only'),  # 仅个股模式立即推送
+                    send_notification=True,  # 始终发送推送通知
                     merge_notification=merge_notification
                 )
                 logger.info(f"[BatchAnalysis] 个股分析完成，成功 {len(results)} 只")
@@ -238,7 +238,7 @@ def trigger_batch_analysis(
                     notifier=pipeline.notifier,
                     analyzer=pipeline.analyzer,
                     search_service=pipeline.search_service,
-                    send_notification=(mode == 'market_only'),  # 仅大盘模式立即推送
+                    send_notification=not merge_notification,  # 非合并模式立即推送，合并模式由后续统一推送
                     merge_notification=merge_notification,
                     override_region=region,
                 )

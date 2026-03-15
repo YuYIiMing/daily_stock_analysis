@@ -1772,6 +1772,119 @@ class AkshareFetcher(BaseFetcher):
             logger.error(f"[Akshare] 新浪接口获取板块排行也失败: {e}")
             return None
 
+    def get_sector_history(self, sector_name: str, days: int = 10) -> Optional[Dict[str, Any]]:
+        """
+        Get sector historical data for strength calculation.
+        
+        Uses akshare.stock_board_industry_hist_em to get daily OHLCV data.
+        
+        Args:
+            sector_name: Sector name, e.g., "小金属", "AI算力"
+            days: Days of history to retrieve (default 10)
+        
+        Returns:
+            {
+                'name': sector_name,
+                'change_1d': float,  # 1-day change %
+                'change_5d': float,  # 5-day change %
+                'change_10d': float, # 10-day change %
+                'avg_amount': float, # Average daily amount (亿)
+                'strength_score': int,  # 0-100
+            }
+            or {'name': sector_name, 'strength_score': 50} on failure (default score)
+        """
+        import akshare as ak
+        from datetime import datetime, timedelta
+        
+        try:
+            self._set_random_user_agent()
+            self._enforce_rate_limit()
+            
+            end_date = datetime.now().strftime('%Y%m%d')
+            start_date = (datetime.now() - timedelta(days=days + 15)).strftime('%Y%m%d')
+            
+            logger.info(f"[API调用] ak.stock_board_industry_hist_em() 获取板块历史: {sector_name}")
+            df = ak.stock_board_industry_hist_em(
+                symbol=sector_name,
+                start_date=start_date,
+                end_date=end_date,
+                period="日k",
+                adjust=""
+            )
+            
+            if df is None or df.empty:
+                logger.warning(f"[Akshare] 板块历史数据为空: {sector_name}")
+                return {'name': sector_name, 'strength_score': 50}
+            
+            # Sort by date
+            df = df.sort_values('日期')
+            latest = df.iloc[-1]
+            
+            # Calculate changes
+            close = latest['收盘']
+            prev_1d = df.iloc[-2] if len(df) > 1 else latest
+            prev_5d = df.iloc[-6] if len(df) > 5 else df.iloc[0]
+            prev_10d = df.iloc[-11] if len(df) > 10 else df.iloc[0]
+            
+            change_1d = (close - prev_1d['收盘']) / prev_1d['收盘'] * 100 if prev_1d['收盘'] > 0 else 0
+            change_5d = (close - prev_5d['收盘']) / prev_5d['收盘'] * 100 if prev_5d['收盘'] > 0 else 0
+            change_10d = (close - prev_10d['收盘']) / prev_10d['收盘'] * 100 if prev_10d['收盘'] > 0 else 0
+            
+            # Average amount (last 5 days)
+            avg_amount = df['成交额'].iloc[-5:].mean() / 1e8  # Convert to 亿
+            
+            # Strength score: base 50 + momentum factors
+            strength_score = 50 + change_5d * 2 + change_1d * 0.5
+            strength_score = max(0, min(100, int(strength_score)))
+            
+            return {
+                'name': sector_name,
+                'change_1d': round(change_1d, 2),
+                'change_5d': round(change_5d, 2),
+                'change_10d': round(change_10d, 2),
+                'avg_amount': round(avg_amount, 2),
+                'strength_score': strength_score,
+            }
+            
+        except Exception as e:
+            logger.warning(f"[Akshare] 获取板块历史数据失败: {sector_name}, {e}")
+            return {'name': sector_name, 'strength_score': 50}
+
+    def get_stock_sectors(self, stock_code: str) -> List[str]:
+        """
+        Get stock's primary industry sector (Plan A: main industry only).
+        
+        Uses akshare.stock_individual_info_em to get the '行业' field.
+        
+        Args:
+            stock_code: Stock code, e.g., "600519"
+        
+        Returns:
+            List containing primary industry name, e.g., ["白酒"]
+            Empty list on failure.
+        """
+        import akshare as ak
+        
+        try:
+            self._set_random_user_agent()
+            self._enforce_rate_limit()
+            
+            logger.info(f"[API调用] ak.stock_individual_info_em() 获取股票行业: {stock_code}")
+            df = ak.stock_individual_info_em(symbol=stock_code)
+            
+            if df is not None and not df.empty:
+                for _, row in df.iterrows():
+                    if row['item'] == '行业':
+                        industry = row['value']
+                        if industry:
+                            return [str(industry)]
+            
+            return []
+            
+        except Exception as e:
+            logger.debug(f"[Akshare] 获取股票行业失败: {stock_code}, {e}")
+            return []
+
 
 if __name__ == "__main__":
     # 测试代码

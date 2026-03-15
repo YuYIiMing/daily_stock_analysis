@@ -5,6 +5,8 @@ Market tools — wraps DataFetcherManager market-level methods as agent tools.
 Tools:
 - get_market_indices: major market index data
 - get_sector_rankings: sector performance rankings
+- get_market_context: comprehensive market context (regime, strength, sectors)
+- get_sector_strength: sector strength analysis for a stock
 """
 
 import logging
@@ -102,7 +104,114 @@ get_sector_rankings_tool = ToolDefinition(
 )
 
 
+# ============================================================
+# get_market_context (NEW)
+# ============================================================
+
+def _handle_get_market_context(region: str = "cn") -> dict:
+    """
+    Get comprehensive market context including regime detection.
+    
+    Returns:
+        - indices: Major index quotes
+        - market_breadth: Up/down/limit stats
+        - top_sectors: Top gaining sectors
+        - bottom_sectors: Top losing sectors
+        - regime: 'bull' | 'bear' | 'range'
+        - strength_score: 0-100 market strength
+        - sh_index: Shanghai index data
+    """
+    from src.services.market_service import MarketService
+    
+    service = MarketService()
+    context = service.get_market_context(region=region)
+    
+    # Format for Agent output
+    result = {
+        "regime": context.get("regime", "range"),
+        "strength_score": context.get("strength_score", 50),
+        "indices": context.get("indices", []),
+        "market_breadth": context.get("market_breadth", {}),
+        "top_sectors": context.get("top_sectors", []),
+        "bottom_sectors": context.get("bottom_sectors", []),
+    }
+    
+    if "sh_index" in context:
+        result["sh_index"] = context["sh_index"]
+    
+    return result
+
+
+get_market_context_tool = ToolDefinition(
+    name="get_market_context",
+    description="Get comprehensive market context including regime (bull/bear/range), "
+                "strength score (0-100), sector rankings, and index data. "
+                "Use this BEFORE analyzing a stock to understand overall market conditions. "
+                "The regime affects trading rules: bear market limits score to 65 and forbids 'buy' advice.",
+    parameters=[
+        ToolParameter(
+            name="region",
+            type="string",
+            description="Market region: 'cn' for China A-shares (default)",
+            required=False,
+            default="cn",
+        ),
+    ],
+    handler=_handle_get_market_context,
+    category="market",
+)
+
+
+# ============================================================
+# get_sector_strength (NEW)
+# ============================================================
+
+def _handle_get_sector_strength(stock_code: str) -> dict:
+    """
+    Get sector strength analysis for a stock's primary industry.
+    
+    Returns:
+        - name: Sector/industry name
+        - strength_score: 0-100
+        - change_5d: 5-day change percentage
+        - is_leader: True if in top gaining sectors
+        - is_laggard: True if in bottom losing sectors
+    """
+    from src.services.market_service import MarketService
+    
+    service = MarketService()
+    
+    # First get market context for sector rankings
+    market_context = service.get_market_context()
+    
+    result = service.get_sector_strength(stock_code, market_context)
+    
+    return result
+
+
+get_sector_strength_tool = ToolDefinition(
+    name="get_sector_strength",
+    description="Get sector strength analysis for a stock's primary industry. "
+                "Returns strength_score (0-100), 5-day change, and whether the sector "
+                "is in top/bottom rankings. Use after get_market_context to evaluate "
+                "sector health. Rules: score>=70 allows buy, score<50 requires caution, "
+                "score<30 forbids buy.",
+    parameters=[
+        ToolParameter(
+            name="stock_code",
+            type="string",
+            description="Stock code, e.g., '600519' for Kweichow Moutai",
+            required=True,
+        ),
+    ],
+    handler=_handle_get_sector_strength,
+    category="market",
+)
+
+
 ALL_MARKET_TOOLS = [
     get_market_indices_tool,
     get_sector_rankings_tool,
+    get_market_context_tool,      # NEW
+    get_sector_strength_tool,      # NEW
 ]

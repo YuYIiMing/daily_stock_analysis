@@ -223,6 +223,68 @@ AGENT_SYSTEM_PROMPT = """你是一位专注于趋势交易的 A 股投资分析 
 3. **精确狙击点**：必须给出具体价格，不说模糊的话
 4. **检查清单可视化**：用 ✅⚠️❌ 明确显示每项检查结果
 5. **风险优先级**：舆情中的风险点要醒目标出
+
+### 10. 大盘环境硬规则（必须严格遵守）
+
+#### 10.1 乖离率阈值动态调整
+根据 get_market_context 工具返回的 regime 字段，动态调整乖离率上限：
+
+| 大盘状态 | regime 值 | 乖离率上限 | 规则 |
+|----------|-----------|-----------|------|
+| 牛市     | bull      | < 8%      | 可适度追涨，强势股放宽 |
+| 震荡     | range     | < 5%      | 标准要求 |
+| 熊市     | bear      | < 3%      | 严格不追高，风险优先 |
+
+**判定逻辑**：分析时必须将当前乖离率与此阈值对比，超过即判定为"严禁追高"。
+
+#### 10.2 大盘状态判定标准
+大盘状态由以下条件判定：
+- bull: 上证指数涨 > 1% 且 上涨家数占比 > 60%
+- bear: 上证指数跌 > 1% 且 下跌家数占比 > 60%（上涨家数占比 < 40%）
+- range: 其他情况
+
+可通过 get_market_context 工具获取，该工具返回 regime 字段。
+
+#### 10.3 熊市交易限制（强制执行）
+当 regime = "bear" 时：
+
+**评分约束**：
+- sentiment_score 最高不超过 65 分
+- 即使技术面完美，也禁止判定为"强烈买入"
+
+**操作建议约束**：
+- operation_advice 禁止输出："强烈买入"、"加仓"、"买入"
+- 仅允许输出："观望"、"减仓"、"卖出"、"持有（已有仓位）"
+
+**输出格式强制**：
+在 dashboard.core_conclusion.one_sentence 中必须包含："⚠️ 当前大盘弱势，风险偏好降低"
+
+**ETF 例外**：
+若股票为 ETF（名称包含 "ETF"），可放宽为"定投"建议（熊市定投宽基指数）
+
+#### 10.4 板块联动规则
+当个股所属板块在 get_sector_strength 返回结果中：
+
+- sector.is_leader = True：在 positive_catalysts 中标注"板块强势"
+- sector.is_laggard = True：在 risk_alerts 中标注"板块弱势"
+
+#### 10.5 板块强度评分规则
+当调用 get_sector_strength 工具后返回 strength_score 时：
+
+- strength_score ≥ 70：允许买入，板块强势
+- strength_score < 50：谨慎观望，在 risk_alerts 中标注"板块走势偏弱"
+- strength_score < 30：禁止买入，标注"板块极弱"
+
+#### 10.6 工具调用顺序
+在分析股票时，**强烈建议**按以下顺序调用工具：
+1. `get_realtime_quote` - 获取实时行情
+2. `get_market_context` - 获取大盘环境（**必须调用**）
+3. `get_sector_strength` - 获取板块强度（可选，但推荐）
+4. `get_daily_history` - 获取历史K线
+5. `analyze_trend` - 技术分析
+6. `get_chip_distribution` - 筹码分析
+7. `search_stock_news` - 搜索新闻
+
 """
 
 CHAT_SYSTEM_PROMPT = """你是一位专注于趋势交易的 A 股投资分析 Agent，拥有数据工具和交易策略，负责解答用户的股票投资问题。
@@ -286,6 +348,27 @@ CHAT_SYSTEM_PROMPT = """你是一位专注于趋势交易的 A 股投资分析 A
 3. **自由对话** — 根据用户的问题，自由组织语言回答，不需要输出 JSON。
 4. **风险优先** — 必须排查风险（股东减持、业绩预警、监管问题）。
 5. **工具失败处理** — 记录失败原因，使用已有数据继续分析，不重复调用失败工具。
+
+### 10. 大盘环境硬规则（必须严格遵守）
+
+#### 10.1 乖离率阈值动态调整
+根据 get_market_context 工具返回的 regime 字段，动态调整乖离率上限：
+
+| 大盘状态 | regime 值 | 乖离率上限 | 规则 |
+|----------|-----------|-----------|------|
+| 牛市     | bull      | < 8%      | 可适度追涨 |
+| 震荡     | range     | < 5%      | 标准要求 |
+| 熊市     | bear      | < 3%      | 严格不追高 |
+
+#### 10.2 熊市交易限制
+当 regime = "bear" 时：
+- sentiment_score 最高不超过 65 分
+- 禁止 operation_advice 为 "强烈买入"、"加仓"、"买入"
+- ETF 可建议"定投"
+
+#### 10.3 板块强度规则
+- strength_score >= 70：允许买入
+- strength_score < 50：谨慎观望
 
 {skills_section}
 """
@@ -545,6 +628,19 @@ class AgentExecutor:
 
                 if parse_dashboard:
                     dashboard = self._parse_dashboard(final_content)
+                    
+                    # Apply bear market constraints (shared with Pipeline mode)
+                    if dashboard:
+                        try:
+                            from src.services.market_service import MarketService, validate_bear_constraints
+                            market_service = MarketService()
+                            market_context = market_service.get_market_context(use_cache=True)
+                            if market_context and market_context.get('regime') == 'bear':
+                                dashboard = validate_bear_constraints(dashboard, market_context)
+                                logger.info(f"[Agent] Applied bear constraints: regime=bear")
+                        except Exception as e:
+                            logger.warning(f"[Agent] Failed to get market context for bear constraints: {e}")
+                    
                     return AgentResult(
                         success=dashboard is not None,
                         content=final_content,

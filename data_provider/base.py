@@ -266,6 +266,33 @@ class BaseFetcher(ABC):
         """
         return None
 
+    def get_sector_history(self, sector_name: str, days: int = 10) -> Optional[Dict[str, Any]]:
+        """
+        Get sector historical data for strength calculation.
+
+        Args:
+            sector_name: Sector name, e.g., "小金属"
+            days: Days of history to retrieve
+
+        Returns:
+            Dict with change_1d, change_5d, strength_score, etc.
+            Returns {'name': sector_name, 'strength_score': 50} on failure.
+        """
+        return {'name': sector_name, 'strength_score': 50}
+
+    def get_stock_sectors(self, stock_code: str) -> List[str]:
+        """
+        Get stock's primary industry sector (Plan A: main industry only).
+
+        Args:
+            stock_code: Stock code, e.g., "600519"
+
+        Returns:
+            List containing primary industry name, e.g., ["白酒"]
+            Empty list on failure.
+        """
+        return []
+
     def get_daily_data(
         self,
         stock_code: str, 
@@ -1128,3 +1155,31 @@ class DataFetcherManager:
                 logger.warning(f"[{fetcher.name}] 获取板块排行失败: {e}")
                 continue
         return [], []
+
+    def get_sector_history(self, sector_name: str, days: int = 10) -> Dict[str, Any]:
+        """Get sector historical data for strength calculation."""
+        for fetcher in self._fetchers:
+            try:
+                if hasattr(fetcher, 'get_sector_history'):
+                    data = fetcher.get_sector_history(sector_name, days)
+                    if data:
+                        logger.debug(f"[{fetcher.name}] 获取板块历史成功: {sector_name}")
+                        return data
+            except Exception as e:
+                logger.debug(f"[{fetcher.name}] 获取板块历史失败: {sector_name}, {e}")
+                continue
+        return {'name': sector_name, 'strength_score': 50}
+
+    def get_stock_sectors(self, stock_code: str) -> List[str]:
+        """Get stock's primary industry sector."""
+        for fetcher in self._fetchers:
+            try:
+                if hasattr(fetcher, 'get_stock_sectors'):
+                    sectors = fetcher.get_stock_sectors(stock_code)
+                    if sectors:
+                        logger.debug(f"[{fetcher.name}] 获取股票行业成功: {stock_code} -> {sectors}")
+                        return sectors
+            except Exception as e:
+                logger.debug(f"[{fetcher.name}] 获取股票行业失败: {stock_code}, {e}")
+                continue
+        return []
