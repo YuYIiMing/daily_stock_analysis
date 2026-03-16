@@ -18,7 +18,6 @@ import {
 import { agentApi } from '../api/agent';
 import { ApiErrorAlert, Button } from '../components/common';
 import { getParsedApiError } from '../api/error';
-import type { StrategyInfo } from '../api/agent';
 import { historyApi } from '../api/history';
 import {
   useAgentChatStore,
@@ -26,6 +25,8 @@ import {
   type ProgressStep,
 } from '../stores/agentChatStore';
 import { downloadSession, formatSessionAsMarkdown } from '../utils/chatExport';
+import StrategySelector from '../components/chat/StrategySelector';
+import { getStoredStrategy, setStoredStrategy, getStrategyById } from '../config/strategies';
 
 interface FollowUpContext {
   stock_code: string;
@@ -49,9 +50,10 @@ const QUICK_QUESTIONS = [
 const ChatPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [input, setInput] = useState('');
-  const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
-  const [selectedStrategy, setSelectedStrategy] = useState<string>('bull_trend');
-  const [showStrategyDesc, setShowStrategyDesc] = useState<string | null>(null);
+  const [selectedStrategy, setSelectedStrategy] = useState<string>(() => {
+    const stored = getStoredStrategy();
+    return stored !== null ? stored : '';
+  });
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set());
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -94,17 +96,6 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     loadInitialSession();
   }, [loadInitialSession]);
-
-  useEffect(() => {
-    agentApi.getStrategies().then((res) => {
-      setStrategies(res.strategies);
-      const defaultId =
-        res.strategies.find((s) => s.id === 'bull_trend')?.id ||
-        res.strategies[0]?.id ||
-        '';
-      setSelectedStrategy(defaultId);
-    }).catch(() => {});
-  }, []);
 
   const handleStartNewChat = useCallback(() => {
     followUpContextRef.current = null;
@@ -159,9 +150,8 @@ const ChatPage: React.FC = () => {
       const msgText = overrideMessage || input.trim();
       if (!msgText || loading) return;
       const usedStrategy = overrideStrategy || selectedStrategy;
-      const usedStrategyName =
-        strategies.find((s) => s.id === usedStrategy)?.name ||
-        (usedStrategy ? usedStrategy : '通用');
+      const strategyInfo = getStrategyById(usedStrategy);
+      const usedStrategyName = strategyInfo?.name || '通用';
 
       const payload = {
         message: msgText,
@@ -174,7 +164,7 @@ const ChatPage: React.FC = () => {
       setInput('');
       await startStream(payload, { strategyName: usedStrategyName });
     },
-    [input, loading, selectedStrategy, strategies, sessionId, startStream],
+    [input, loading, selectedStrategy, sessionId, startStream],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -186,6 +176,7 @@ const ChatPage: React.FC = () => {
 
   const handleQuickQuestion = (q: (typeof QUICK_QUESTIONS)[0]) => {
     setSelectedStrategy(q.strategy);
+    setStoredStrategy(q.strategy);
     handleSend(q.label, q.strategy);
   };
 
@@ -687,76 +678,16 @@ const ChatPage: React.FC = () => {
             ) : null}
             
             {/* Strategy selection */}
-            {strategies.length > 0 && (
-              <div className="mb-3 flex flex-wrap gap-2 items-center">
-                <span className="text-xs text-[rgba(255,255,255,0.4)] font-medium mr-2">
-                  策略
-                </span>
-                <label 
-                  className={`cursor-pointer px-3 py-1.5 rounded-lg text-xs transition-all duration-200 border ${
-                    selectedStrategy === '' 
-                      ? 'bg-[rgba(0,242,254,0.15)] border-[rgba(0,242,254,0.3)] text-[#00F2FE]' 
-                      : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.1)] text-[rgba(255,255,255,0.5)] hover:border-[rgba(255,255,255,0.2)]'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="strategy"
-                    value=""
-                    checked={selectedStrategy === ''}
-                    onChange={() => setSelectedStrategy('')}
-                    className="sr-only"
-                  />
-                  <span className="flex items-center gap-1.5">
-                    {selectedStrategy === '' && (
-                      <span className="w-1 h-1 rounded-full bg-[#00F2FE]" />
-                    )}
-                    通用分析
-                  </span>
-                </label>
-                {strategies.map((s) => (
-                  <label
-                    key={s.id}
-                    className={`cursor-pointer relative px-3 py-1.5 rounded-lg text-xs transition-all duration-200 border ${
-                      selectedStrategy === s.id 
-                        ? 'bg-[rgba(0,242,254,0.15)] border-[rgba(0,242,254,0.3)] text-[#00F2FE]' 
-                        : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.1)] text-[rgba(255,255,255,0.5)] hover:border-[rgba(255,255,255,0.2)]'
-                    }`}
-                    onMouseEnter={() => setShowStrategyDesc(s.id)}
-                    onMouseLeave={() => setShowStrategyDesc(null)}
-                  >
-                    <input
-                      type="radio"
-                      name="strategy"
-                      value={s.id}
-                      checked={selectedStrategy === s.id}
-                      onChange={() => setSelectedStrategy(s.id)}
-                      className="sr-only"
-                    />
-                    <span className="flex items-center gap-1.5">
-                      {selectedStrategy === s.id && (
-                        <span className="w-1 h-1 rounded-full bg-[#00F2FE]" />
-                      )}
-                      {s.name}
-                    </span>
-                    {showStrategyDesc === s.id && s.description && (
-                      <div 
-                        className="absolute left-0 bottom-full mb-2 z-50 w-60 p-3 rounded-xl text-xs pointer-events-none"
-                        style={{
-                          background: 'rgba(16, 24, 36, 0.95)',
-                          backdropFilter: 'blur(10px)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
-                        }}
-                      >
-                        <p className="font-medium text-[rgba(255,255,255,0.9)] mb-1">{s.name}</p>
-                        <p className="text-[rgba(255,255,255,0.5)]">{s.description}</p>
-                      </div>
-                    )}
-                  </label>
-                ))}
-              </div>
-            )}
+            <div className="mb-3">
+              <StrategySelector
+                selectedStrategy={selectedStrategy}
+                onStrategyChange={(id) => {
+                  setSelectedStrategy(id);
+                  setStoredStrategy(id);
+                }}
+                disabled={loading}
+              />
+            </div>
 
             {/* Input box */}
             <div className="flex gap-3 items-end">
