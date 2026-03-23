@@ -214,19 +214,32 @@ class StockAnalysisPipeline:
             if not stock_name:
                 stock_name = f'股票{code}'
 
-            # Step 2: 获取筹码分布 - 使用统一入口，带熔断保护
-            chip_data = None
+            # Detect ETF type early to skip chip distribution for ETF/index
+            is_etf = False
+            etf_type = ""
             try:
-                chip_data = self.fetcher_manager.get_chip_distribution(code)
-                if chip_data:
-                    logger.info(f"{stock_name}({code}) 筹码分布: 获利比例={chip_data.profit_ratio:.1%}, "
-                              f"90%集中度={chip_data.concentration_90:.2%}")
-                else:
-                    logger.debug(f"{stock_name}({code}) 筹码分布获取失败或已禁用")
+                from src.services.strategy_selector import detect_stock_type
+                is_etf, etf_type = detect_stock_type(code, stock_name)
+                if is_etf:
+                    logger.info(f"{stock_name}({code}) detected as ETF, type: {etf_type}")
             except Exception as e:
-                logger.warning(f"{stock_name}({code}) 获取筹码分布失败: {e}")
+                logger.debug(f"[{code}] ETF detection failed: {e}")
 
-            # If agent mode is enabled, or specific agent skills are configured, use the Agent analysis pipeline
+            # Step 2: Get chip distribution - skip for ETF (no chip data for ETF/index)
+            chip_data = None
+            if not is_etf:
+                try:
+                    chip_data = self.fetcher_manager.get_chip_distribution(code, realtime_quote=realtime_quote)
+                    if chip_data:
+                        logger.info(f"{stock_name}({code}) 筹码分布: 获利比例={chip_data.profit_ratio:.1%}, "
+                                  f"90%集中度={chip_data.concentration_90:.2%}")
+                    else:
+                        logger.debug(f"{stock_name}({code}) 筹码分布获取失败或已禁用")
+                except Exception as e:
+                    logger.warning(f"{stock_name}({code}) 获取筹码分布失败: {e}")
+            else:
+                logger.debug(f"{stock_name}({code}) is ETF, skipping chip distribution")
+
             use_agent = getattr(self.config, 'agent_mode', False)
             if not use_agent:
                 # Auto-enable agent mode when specific skills are configured (e.g., scheduled task with strategy)
@@ -237,7 +250,7 @@ class StockAnalysisPipeline:
 
             if use_agent:
                 logger.info(f"{stock_name}({code}) 启用 Agent 模式进行分析")
-                return self._analyze_with_agent(code, report_type, query_id, stock_name, realtime_quote, chip_data)
+                return self._analyze_with_agent(code, report_type, query_id, stock_name, realtime_quote, chip_data, is_etf=is_etf)
             
             # Step 3: 趋势分析（基于交易理念）
             trend_result: Optional[TrendAnalysisResult] = None
@@ -316,6 +329,17 @@ class StockAnalysisPipeline:
             except Exception as e:
                 logger.warning(f"{stock_name}({code}) Failed to get market context: {e}")
             
+            # Step 5.6: Detect ETF type (for non-Agent mode)
+            is_etf = False
+            etf_type = ""
+            try:
+                from src.services.strategy_selector import detect_stock_type
+                is_etf, etf_type = detect_stock_type(code, stock_name)
+                if is_etf:
+                    logger.info(f"{stock_name}({code}) 检测为 ETF, 类型: {etf_type}")
+            except Exception as e:
+                logger.debug(f"[{code}] ETF 检测失败 (non-Agent mode): {e}")
+            
             # Step 6: 增强上下文数据（添加实时行情、筹码、趋势分析结果、股票名称、大盘环境）
             enhanced_context = self._enhance_context(
                 context, 
@@ -325,6 +349,11 @@ class StockAnalysisPipeline:
                 stock_name,  # 传入股票名称
                 market_context,  # 传入大盘环境数据
             )
+            
+            # Add ETF type to context for non-Agent mode
+            if is_etf:
+                enhanced_context['is_index_etf'] = True
+                enhanced_context['etf_type'] = etf_type
             
             # Step 7: 调用 AI 分析（传入增强的上下文和新闻）
             result = self.analyzer.analyze(enhanced_context, news_context=news_context)
@@ -337,7 +366,8 @@ class StockAnalysisPipeline:
                 result.change_pct = realtime_data.get('change_pct')
 
             # Step 7.6: chip_structure fallback (Issue #589)
-            if result and chip_data:
+            # Note: ETF does not have chip structure concept, skip filling
+            if result and chip_data and not is_etf:
                 fill_chip_structure_if_needed(result, chip_data)
 
             # Step 8: 保存分析历史记录
@@ -417,6 +447,9 @@ class StockAnalysisPipeline:
                 'circ_mv': getattr(realtime_quote, 'circ_mv', None),
                 'change_60d': getattr(realtime_quote, 'change_60d', None),
                 'source': getattr(realtime_quote, 'source', None),
+                # ETF-specific fields
+                'nav': getattr(realtime_quote, 'nav', None),
+                'premium_rate': getattr(realtime_quote, 'premium_rate', None),
             }
             # 移除 None 值以减少上下文大小
             enhanced['realtime'] = {k: v for k, v in enhanced['realtime'].items() if v is not None}
@@ -557,32 +590,44 @@ class StockAnalysisPipeline:
         query_id: str,
         stock_name: str,
         realtime_quote: Any,
-        chip_data: Optional[ChipDistribution]
+        chip_data: Optional[ChipDistribution],
+        is_etf: bool = False
     ) -> Optional[AnalysisResult]:
         """
-        使用 Agent 模式分析单只股票。
+        使用 Agent 模式分析单只股票或ETF。
+        
+        Args:
+            is_etf: If True, use ETF-specific analysis prompt.
         """
         try:
             from src.agent.factory import build_agent_executor
+            from src.services.strategy_selector import select_strategies
 
+            # Select appropriate strategies based on ETF type
+            strategies = select_strategies(is_etf)
+            
             # Build executor from shared factory (ToolRegistry and SkillManager prototype are cached)
-            executor = build_agent_executor(self.config, getattr(self.config, 'agent_skills', None) or None)
+            executor = build_agent_executor(self.config, strategies if strategies else None)
 
             # Build initial context to avoid redundant tool calls
             initial_context = {
                 "stock_code": code,
                 "stock_name": stock_name,
                 "report_type": report_type.value,
+                "is_etf": is_etf,
             }
             
             if realtime_quote:
                 initial_context["realtime_quote"] = self._safe_to_dict(realtime_quote)
-            if chip_data:
+            if chip_data and not is_etf:
                 initial_context["chip_distribution"] = self._safe_to_dict(chip_data)
 
             # 运行 Agent
-            message = f"请分析股票 {code} ({stock_name})，并生成决策仪表盘报告。"
-            agent_result = executor.run(message, context=initial_context)
+            if is_etf:
+                message = f"请分析 ETF {code} ({stock_name})，并生成决策仪表盘报告。注意使用 ETF 专用分析逻辑。"
+            else:
+                message = f"请分析股票 {code} ({stock_name})，并生成决策仪表盘报告。"
+            agent_result = executor.run(message, context=initial_context, is_etf=is_etf)
 
             # 转换为 AnalysisResult
             result = self._agent_result_to_analysis_result(agent_result, code, stock_name, report_type, query_id)
@@ -600,7 +645,8 @@ class StockAnalysisPipeline:
                         missing,
                     )
             # chip_structure fallback (Issue #589), before save_analysis_history
-            if result and chip_data:
+            # Note: ETF does not have chip structure concept, skip filling
+            if result and chip_data and not is_etf:
                 fill_chip_structure_if_needed(result, chip_data)
 
             resolved_stock_name = result.name if result and result.name else stock_name

@@ -63,10 +63,11 @@ x-common: &common
         memory: 256M
 
 services:
-  # 定时任务模式
+  # 定时任务模式（需设置 SCHEDULE_ENABLED=true）
   analyzer:
     <<: *common
     container_name: stock-analyzer
+    command: ["python", "main.py", "--schedule"]
 
   # FastAPI 模式
   server:

@@ -73,4 +73,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     || python -c "import sys; sys.exit(0)"
 
 # 默认命令（可被覆盖）
-CMD ["python", "main.py", "--schedule"]
+# 默认启动 API 服务，定时任务通过 SCHEDULE_ENABLED=true 启用
+CMD ["python", "main.py", "--serve"]
