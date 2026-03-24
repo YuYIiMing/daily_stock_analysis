@@ -287,6 +287,11 @@ class Config:
     # 交易日检查：默认启用，非交易日跳过执行；设为 false 或 --force-run 可强制执行（Issue #373）
     trading_day_check_enabled: bool = True
 
+    # === Trend system configuration ===
+    trend_system_enabled: bool = True
+    trend_system_degraded_min_float_market_cap_b: float = 100.0
+    trend_system_degraded_min_avg_amount_b: float = 5.0
+
     # === 实时行情增强数据配置 ===
     # 实时行情开关（关闭后使用历史收盘价进行分析）
     enable_realtime_quote: bool = True
@@ -729,6 +734,13 @@ class Config:
                 os.getenv('MARKET_REVIEW_REGION', 'cn')
             ),
             trading_day_check_enabled=os.getenv('TRADING_DAY_CHECK_ENABLED', 'true').lower() != 'false',
+            trend_system_enabled=os.getenv('TREND_SYSTEM_ENABLED', 'true').lower() == 'true',
+            trend_system_degraded_min_float_market_cap_b=float(
+                os.getenv('TREND_SYSTEM_DEGRADED_MIN_FLOAT_MARKET_CAP_B', '100')
+            ),
+            trend_system_degraded_min_avg_amount_b=float(
+                os.getenv('TREND_SYSTEM_DEGRADED_MIN_AVG_AMOUNT_B', '5')
+            ),
             webui_enabled=os.getenv('WEBUI_ENABLED', 'false').lower() == 'true',
             webui_host=os.getenv('WEBUI_HOST', '127.0.0.1'),
             webui_port=int(os.getenv('WEBUI_PORT', '8000')),

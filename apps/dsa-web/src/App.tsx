@@ -7,7 +7,8 @@ import {
   LineChart, 
   Settings, 
   LogOut,
-  TrendingUp
+  TrendingUp,
+  Target
 } from 'lucide-react';
 import HomePage from './pages/HomePage';
 import BacktestPage from './pages/BacktestPage';
@@ -15,6 +16,7 @@ import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ChatPage from './pages/ChatPage';
+import TrendSystemPage from './pages/TrendSystemPage';
 import { ApiErrorAlert } from './components/common';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAgentChatStore } from './stores/agentChatStore';
@@ -47,6 +49,12 @@ const NAV_ITEMS: NavItem[] = [
         label: '回测',
         to: '/backtest',
         icon: LineChart,
+    },
+    {
+        key: 'trend-system',
+        label: '趋势系统',
+        to: '/trend-system',
+        icon: Target,
     },
     {
         key: 'settings',
@@ -190,6 +198,7 @@ const AppContent: React.FC = () => {
                     <Route path="/" element={<HomePage/>}/>
                     <Route path="/chat" element={<ChatPage/>}/>
                     <Route path="/backtest" element={<BacktestPage/>}/>
+                    <Route path="/trend-system" element={<TrendSystemPage/>}/>
                     <Route path="/settings" element={<SettingsPage/>}/>
                     <Route path="/login" element={<LoginPage/>}/>
                     <Route path="*" element={<NotFoundPage/>}/>

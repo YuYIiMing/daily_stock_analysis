@@ -395,6 +395,150 @@ class LLMUsage(Base):
     called_at = Column(DateTime, default=datetime.now, index=True)
 
 
+class TrendTradeRecord(Base):
+    """Manual trade records for the trend trading system."""
+
+    __tablename__ = 'trend_trade_records'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(16), nullable=False, index=True)
+    name = Column(String(64))
+    sector_view = Column(String(16), nullable=False, default='concept', index=True)
+    sector_key = Column(String(128), index=True)
+    sector_name = Column(String(128))
+    open_date = Column(Date, nullable=False, index=True)
+    open_type = Column(String(32), nullable=False, index=True)
+    entry_price = Column(Float, nullable=False)
+    initial_stop_loss = Column(Float)
+    position_pct = Column(Float, nullable=False)
+    is_elite_strategy = Column(Boolean, nullable=False, default=False)
+    close_date = Column(Date, index=True)
+    exit_price = Column(Float)
+    exit_reason = Column(String(64))
+    is_stop_loss = Column(Boolean)
+    breakout_failed = Column(Boolean)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class TrendStageOverride(Base):
+    """Manual daily stage downgrade records."""
+
+    __tablename__ = 'trend_stage_overrides'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    override_date = Column(Date, nullable=False, index=True)
+    sector_view = Column(String(16), nullable=False, default='concept', index=True)
+    sector_key = Column(String(128), nullable=False)
+    sector_name = Column(String(128))
+    original_stage = Column(String(16), nullable=False)
+    target_stage = Column(String(16), nullable=False)
+    reason = Column(Text, nullable=False)
+    operator = Column(String(64), nullable=False, default='web')
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint('override_date', 'sector_view', 'sector_key', name='uix_trend_override_daily_sector'),
+    )
+
+
+class TrendDailySnapshot(Base):
+    """Persisted daily overview payloads for the trend system."""
+
+    __tablename__ = 'trend_daily_snapshots'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date = Column(Date, nullable=False, unique=True, index=True)
+    payload = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class TrendPreopenSnapshot(Base):
+    """Persisted pre-open confirmation payloads for the trend system."""
+
+    __tablename__ = 'trend_preopen_snapshots'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date = Column(Date, nullable=False, unique=True, index=True)
+    payload = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class TrendIntradayAlert(Base):
+    """Intraday alert records for the trend system."""
+
+    __tablename__ = 'trend_intraday_alerts'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    alert_date = Column(Date, nullable=False, index=True)
+    alert_type = Column(String(32), nullable=False, index=True)
+    code = Column(String(16), index=True)
+    name = Column(String(64))
+    sector_key = Column(String(128), index=True)
+    message = Column(Text, nullable=False)
+    payload = Column(Text)
+    acked = Column(Boolean, nullable=False, default=False, index=True)
+    acked_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+
+class TrendPosition(Base):
+    """Manual holding records for current and historical positions."""
+
+    __tablename__ = 'trend_positions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(16), nullable=False, index=True)
+    name = Column(String(64))
+    sector_view = Column(String(16), nullable=False, default='concept', index=True)
+    sector_key = Column(String(128), index=True)
+    sector_name = Column(String(128))
+    open_date = Column(Date, nullable=False, index=True)
+    open_type = Column(String(32), nullable=False, index=True)
+    entry_price = Column(Float, nullable=False)
+    initial_stop_loss = Column(Float)
+    current_stop_loss = Column(Float)
+    trend_exit_line = Column(Float)
+    position_pct = Column(Float, nullable=False)
+    shares = Column(Float)
+    is_elite_strategy = Column(Boolean, nullable=False, default=False)
+    take_profit_stage = Column(Integer, nullable=False, default=0)
+    status = Column(String(16), nullable=False, default='open', index=True)
+    linked_trade_id = Column(Integer, ForeignKey('trend_trade_records.id'), index=True)
+    close_date = Column(Date, index=True)
+    exit_price = Column(Float)
+    exit_reason = Column(String(64))
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class TrendRiskStateSnapshot(Base):
+    """Persisted daily risk-state payloads for audit."""
+
+    __tablename__ = 'trend_risk_state_snapshots'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date = Column(Date, nullable=False, unique=True, index=True)
+    payload = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class TrendDiagnosticsSnapshot(Base):
+    """Persisted diagnostics payloads for trend-system scans."""
+
+    __tablename__ = 'trend_diagnostics_snapshots'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date = Column(Date, nullable=False, unique=True, index=True)
+    payload = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 class DatabaseManager:
     """
     数据库管理器 - 单例模式
@@ -1521,6 +1665,485 @@ class DatabaseManager:
                 session.rollback()
                 logger.error(f"delete_analysis_history failed for record_id={record_id}: {e}")
                 raise
+
+    # ------------------------------------------------------------------
+    # Trend system
+    # ------------------------------------------------------------------
+
+    def create_trend_trade_record(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Create one manual trend trade record."""
+        row = TrendTradeRecord(
+            code=str(payload["code"]).upper(),
+            name=payload.get("name"),
+            sector_view=payload.get("sector_view", "concept"),
+            sector_key=payload.get("sector_key"),
+            sector_name=payload.get("sector_name"),
+            open_date=payload["open_date"],
+            open_type=payload["open_type"],
+            entry_price=payload["entry_price"],
+            initial_stop_loss=payload.get("initial_stop_loss"),
+            position_pct=payload["position_pct"],
+            is_elite_strategy=bool(payload.get("is_elite_strategy", False)),
+            close_date=payload.get("close_date"),
+            exit_price=payload.get("exit_price"),
+            exit_reason=payload.get("exit_reason"),
+            is_stop_loss=payload.get("is_stop_loss"),
+            breakout_failed=payload.get("breakout_failed"),
+        )
+        with self.session_scope() as session:
+            session.add(row)
+            session.flush()
+            session.refresh(row)
+            return self._trend_trade_to_dict(row)
+
+    def update_trend_trade_record(self, trade_id: int, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update an existing trend trade record."""
+        with self.session_scope() as session:
+            record = session.execute(
+                select(TrendTradeRecord).where(TrendTradeRecord.id == trade_id)
+            ).scalar_one_or_none()
+            if record is None:
+                return None
+
+            for field in (
+                "close_date",
+                "exit_price",
+                "exit_reason",
+                "is_stop_loss",
+                "breakout_failed",
+                "sector_view",
+                "sector_key",
+                "sector_name",
+                "name",
+                "initial_stop_loss",
+                "position_pct",
+                "is_elite_strategy",
+            ):
+                if field in updates:
+                    setattr(record, field, updates[field])
+
+            session.flush()
+            session.refresh(record)
+            return self._trend_trade_to_dict(record)
+
+    def list_trend_trade_records(
+        self,
+        code: Optional[str] = None,
+        sector_key: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """List trend trade records with optional filters."""
+        with self.get_session() as session:
+            stmt = select(TrendTradeRecord)
+            if code:
+                stmt = stmt.where(TrendTradeRecord.code == code.upper())
+            if sector_key:
+                stmt = stmt.where(TrendTradeRecord.sector_key == sector_key)
+            if status == "open":
+                stmt = stmt.where(TrendTradeRecord.close_date.is_(None))
+            elif status == "closed":
+                stmt = stmt.where(TrendTradeRecord.close_date.is_not(None))
+
+            stmt = stmt.order_by(desc(TrendTradeRecord.open_date), desc(TrendTradeRecord.id)).limit(limit)
+            records = session.execute(stmt).scalars().all()
+            return [self._trend_trade_to_dict(record) for record in records]
+
+    def create_or_update_trend_stage_override(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Create or replace one daily stage override."""
+        with self.session_scope() as session:
+            record = session.execute(
+                select(TrendStageOverride).where(
+                    and_(
+                        TrendStageOverride.override_date == payload["override_date"],
+                        TrendStageOverride.sector_view == payload["sector_view"],
+                        TrendStageOverride.sector_key == payload["sector_key"],
+                    )
+                )
+            ).scalar_one_or_none()
+            if record is None:
+                record = TrendStageOverride(
+                    override_date=payload["override_date"],
+                    sector_view=payload["sector_view"],
+                    sector_key=payload["sector_key"],
+                )
+                session.add(record)
+
+            record.sector_name = payload.get("sector_name")
+            record.original_stage = payload["original_stage"]
+            record.target_stage = payload["target_stage"]
+            record.reason = payload["reason"]
+            record.operator = payload.get("operator", "web")
+            session.flush()
+            session.refresh(record)
+            return self._trend_override_to_dict(record)
+
+    def list_trend_stage_overrides(
+        self,
+        override_date: Optional[date] = None,
+        sector_view: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List stored stage overrides."""
+        with self.get_session() as session:
+            stmt = select(TrendStageOverride)
+            if override_date:
+                stmt = stmt.where(TrendStageOverride.override_date == override_date)
+            if sector_view:
+                stmt = stmt.where(TrendStageOverride.sector_view == sector_view)
+            stmt = stmt.order_by(desc(TrendStageOverride.created_at))
+            records = session.execute(stmt).scalars().all()
+            return [self._trend_override_to_dict(record) for record in records]
+
+    def list_latest_stock_codes(self, limit: int = 300) -> List[str]:
+        """Return top liquid A-share codes from the latest stored trading day."""
+        with self.get_session() as session:
+            latest_date = session.execute(select(func.max(StockDaily.date))).scalar_one_or_none()
+            if latest_date is None:
+                return []
+
+            records = session.execute(
+                select(StockDaily.code)
+                .where(
+                    and_(
+                        StockDaily.date == latest_date,
+                        func.length(StockDaily.code) == 6,
+                    )
+                )
+                .order_by(desc(func.coalesce(StockDaily.amount, 0.0)))
+                .limit(limit)
+            ).all()
+            return [row[0] for row in records if row[0] and str(row[0]).isdigit()]
+
+    def save_trend_daily_snapshot(self, snapshot_date: date, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Upsert one daily snapshot."""
+        with self.session_scope() as session:
+            record = session.execute(
+                select(TrendDailySnapshot).where(TrendDailySnapshot.snapshot_date == snapshot_date)
+            ).scalar_one_or_none()
+            if record is None:
+                record = TrendDailySnapshot(snapshot_date=snapshot_date, payload="")
+                session.add(record)
+
+            record.payload = json.dumps(payload, ensure_ascii=False, default=str)
+            session.flush()
+            session.refresh(record)
+            return self._trend_snapshot_to_dict(record)
+
+    def get_latest_trend_daily_snapshot(self) -> Optional[Dict[str, Any]]:
+        """Return the latest stored daily snapshot."""
+        with self.get_session() as session:
+            record = session.execute(
+                select(TrendDailySnapshot).order_by(desc(TrendDailySnapshot.snapshot_date)).limit(1)
+            ).scalar_one_or_none()
+            return self._trend_snapshot_to_dict(record) if record else None
+
+    def list_trend_daily_snapshots(self, days: int = 30) -> List[Dict[str, Any]]:
+        """Return recent trend snapshots."""
+        start_date = date.today() - timedelta(days=max(days, 1) - 1)
+        with self.get_session() as session:
+            records = session.execute(
+                select(TrendDailySnapshot)
+                .where(TrendDailySnapshot.snapshot_date >= start_date)
+                .order_by(desc(TrendDailySnapshot.snapshot_date))
+            ).scalars().all()
+            return [self._trend_snapshot_to_dict(record) for record in records]
+
+    def save_trend_preopen_snapshot(self, snapshot_date: date, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Upsert one pre-open snapshot."""
+        with self.session_scope() as session:
+            record = session.execute(
+                select(TrendPreopenSnapshot).where(TrendPreopenSnapshot.snapshot_date == snapshot_date)
+            ).scalar_one_or_none()
+            if record is None:
+                record = TrendPreopenSnapshot(snapshot_date=snapshot_date, payload="")
+                session.add(record)
+
+            record.payload = json.dumps(payload, ensure_ascii=False, default=str)
+            session.flush()
+            session.refresh(record)
+            return self._trend_payload_record_to_dict(record)
+
+    def get_latest_trend_preopen_snapshot(self) -> Optional[Dict[str, Any]]:
+        """Return the latest stored pre-open snapshot."""
+        with self.get_session() as session:
+            record = session.execute(
+                select(TrendPreopenSnapshot).order_by(desc(TrendPreopenSnapshot.snapshot_date)).limit(1)
+            ).scalar_one_or_none()
+            return self._trend_payload_record_to_dict(record) if record else None
+
+    def save_trend_risk_state_snapshot(self, snapshot_date: date, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Upsert one risk-state snapshot."""
+        with self.session_scope() as session:
+            record = session.execute(
+                select(TrendRiskStateSnapshot).where(TrendRiskStateSnapshot.snapshot_date == snapshot_date)
+            ).scalar_one_or_none()
+            if record is None:
+                record = TrendRiskStateSnapshot(snapshot_date=snapshot_date, payload="")
+                session.add(record)
+
+            record.payload = json.dumps(payload, ensure_ascii=False, default=str)
+            session.flush()
+            session.refresh(record)
+            return self._trend_payload_record_to_dict(record)
+
+    def save_trend_diagnostics_snapshot(self, snapshot_date: date, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Upsert one diagnostics snapshot."""
+        with self.session_scope() as session:
+            record = session.execute(
+                select(TrendDiagnosticsSnapshot).where(TrendDiagnosticsSnapshot.snapshot_date == snapshot_date)
+            ).scalar_one_or_none()
+            if record is None:
+                record = TrendDiagnosticsSnapshot(snapshot_date=snapshot_date, payload="")
+                session.add(record)
+
+            record.payload = json.dumps(payload, ensure_ascii=False, default=str)
+            session.flush()
+            session.refresh(record)
+            return self._trend_payload_record_to_dict(record)
+
+    def create_trend_position(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Create one manual position record."""
+        row = TrendPosition(
+            code=str(payload["code"]).upper(),
+            name=payload.get("name"),
+            sector_view=payload.get("sector_view", "concept"),
+            sector_key=payload.get("sector_key"),
+            sector_name=payload.get("sector_name"),
+            open_date=payload["open_date"],
+            open_type=payload["open_type"],
+            entry_price=payload["entry_price"],
+            initial_stop_loss=payload.get("initial_stop_loss"),
+            current_stop_loss=payload.get("current_stop_loss"),
+            trend_exit_line=payload.get("trend_exit_line"),
+            position_pct=payload["position_pct"],
+            shares=payload.get("shares"),
+            is_elite_strategy=bool(payload.get("is_elite_strategy", False)),
+            take_profit_stage=int(payload.get("take_profit_stage", 0) or 0),
+            status=payload.get("status", "open"),
+            linked_trade_id=payload.get("linked_trade_id"),
+            close_date=payload.get("close_date"),
+            exit_price=payload.get("exit_price"),
+            exit_reason=payload.get("exit_reason"),
+            notes=payload.get("notes"),
+        )
+        with self.session_scope() as session:
+            session.add(row)
+            session.flush()
+            session.refresh(row)
+            return self._trend_position_to_dict(row)
+
+    def update_trend_position(self, position_id: int, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update an existing trend position."""
+        with self.session_scope() as session:
+            record = session.execute(
+                select(TrendPosition).where(TrendPosition.id == position_id)
+            ).scalar_one_or_none()
+            if record is None:
+                return None
+
+            for field in (
+                "name",
+                "sector_view",
+                "sector_key",
+                "sector_name",
+                "initial_stop_loss",
+                "current_stop_loss",
+                "trend_exit_line",
+                "position_pct",
+                "shares",
+                "is_elite_strategy",
+                "take_profit_stage",
+                "status",
+                "close_date",
+                "exit_price",
+                "exit_reason",
+                "notes",
+            ):
+                if field in updates:
+                    setattr(record, field, updates[field])
+
+            session.flush()
+            session.refresh(record)
+            return self._trend_position_to_dict(record)
+
+    def list_trend_positions(
+        self,
+        code: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """List trend positions with optional filters."""
+        with self.get_session() as session:
+            stmt = select(TrendPosition)
+            if code:
+                stmt = stmt.where(TrendPosition.code == code.upper())
+            if status:
+                stmt = stmt.where(TrendPosition.status == status)
+            stmt = stmt.order_by(desc(TrendPosition.open_date), desc(TrendPosition.id)).limit(limit)
+            records = session.execute(stmt).scalars().all()
+            return [self._trend_position_to_dict(record) for record in records]
+
+    def create_trend_intraday_alert(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Create one intraday alert record."""
+        row = TrendIntradayAlert(
+            alert_date=payload.get("alert_date", date.today()),
+            alert_type=payload["alert_type"],
+            code=payload.get("code"),
+            name=payload.get("name"),
+            sector_key=payload.get("sector_key"),
+            message=payload["message"],
+            payload=json.dumps(payload.get("payload", {}), ensure_ascii=False, default=str),
+            acked=bool(payload.get("acked", False)),
+            acked_at=payload.get("acked_at"),
+        )
+        with self.session_scope() as session:
+            session.add(row)
+            session.flush()
+            session.refresh(row)
+            return self._trend_alert_to_dict(row)
+
+    def ack_trend_intraday_alert(self, alert_id: int) -> Optional[Dict[str, Any]]:
+        """Acknowledge one intraday alert."""
+        with self.session_scope() as session:
+            record = session.execute(
+                select(TrendIntradayAlert).where(TrendIntradayAlert.id == alert_id)
+            ).scalar_one_or_none()
+            if record is None:
+                return None
+
+            record.acked = True
+            record.acked_at = datetime.now()
+            session.flush()
+            session.refresh(record)
+            return self._trend_alert_to_dict(record)
+
+    def list_trend_intraday_alerts(self, days: int = 5, limit: int = 100) -> List[Dict[str, Any]]:
+        """List recent intraday alerts."""
+        start_date = date.today() - timedelta(days=max(days, 1) - 1)
+        with self.get_session() as session:
+            records = session.execute(
+                select(TrendIntradayAlert)
+                .where(TrendIntradayAlert.alert_date >= start_date)
+                .order_by(desc(TrendIntradayAlert.created_at))
+                .limit(limit)
+            ).scalars().all()
+            return [self._trend_alert_to_dict(record) for record in records]
+
+    @staticmethod
+    def _trend_trade_to_dict(record: TrendTradeRecord) -> Dict[str, Any]:
+        return {
+            "id": record.id,
+            "code": record.code,
+            "name": record.name,
+            "sector_view": record.sector_view,
+            "sector_key": record.sector_key,
+            "sector_name": record.sector_name,
+            "open_date": record.open_date.isoformat() if record.open_date else None,
+            "open_type": record.open_type,
+            "entry_price": record.entry_price,
+            "initial_stop_loss": record.initial_stop_loss,
+            "position_pct": record.position_pct,
+            "is_elite_strategy": bool(record.is_elite_strategy),
+            "close_date": record.close_date.isoformat() if record.close_date else None,
+            "exit_price": record.exit_price,
+            "exit_reason": record.exit_reason,
+            "is_stop_loss": record.is_stop_loss,
+            "breakout_failed": record.breakout_failed,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+        }
+
+    @staticmethod
+    def _trend_override_to_dict(record: TrendStageOverride) -> Dict[str, Any]:
+        return {
+            "id": record.id,
+            "override_date": record.override_date.isoformat() if record.override_date else None,
+            "sector_view": record.sector_view,
+            "sector_key": record.sector_key,
+            "sector_name": record.sector_name,
+            "original_stage": record.original_stage,
+            "target_stage": record.target_stage,
+            "reason": record.reason,
+            "operator": record.operator,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+        }
+
+    @staticmethod
+    def _trend_snapshot_to_dict(record: TrendDailySnapshot) -> Dict[str, Any]:
+        try:
+            payload = json.loads(record.payload or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        return {
+            "id": record.id,
+            "snapshot_date": record.snapshot_date.isoformat() if record.snapshot_date else None,
+            "payload": payload,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+        }
+
+    @staticmethod
+    def _trend_payload_record_to_dict(record: Any) -> Dict[str, Any]:
+        try:
+            payload = json.loads(record.payload or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        return {
+            "id": record.id,
+            "snapshot_date": record.snapshot_date.isoformat() if record.snapshot_date else None,
+            "payload": payload,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+        }
+
+    @staticmethod
+    def _trend_position_to_dict(record: TrendPosition) -> Dict[str, Any]:
+        return {
+            "id": record.id,
+            "code": record.code,
+            "name": record.name,
+            "sector_view": record.sector_view,
+            "sector_key": record.sector_key,
+            "sector_name": record.sector_name,
+            "open_date": record.open_date.isoformat() if record.open_date else None,
+            "open_type": record.open_type,
+            "entry_price": record.entry_price,
+            "initial_stop_loss": record.initial_stop_loss,
+            "current_stop_loss": record.current_stop_loss,
+            "trend_exit_line": record.trend_exit_line,
+            "position_pct": record.position_pct,
+            "shares": record.shares,
+            "is_elite_strategy": bool(record.is_elite_strategy),
+            "take_profit_stage": record.take_profit_stage,
+            "status": record.status,
+            "linked_trade_id": record.linked_trade_id,
+            "close_date": record.close_date.isoformat() if record.close_date else None,
+            "exit_price": record.exit_price,
+            "exit_reason": record.exit_reason,
+            "notes": record.notes,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+        }
+
+    @staticmethod
+    def _trend_alert_to_dict(record: TrendIntradayAlert) -> Dict[str, Any]:
+        try:
+            payload = json.loads(record.payload or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        return {
+            "id": record.id,
+            "alert_date": record.alert_date.isoformat() if record.alert_date else None,
+            "alert_type": record.alert_type,
+            "code": record.code,
+            "name": record.name,
+            "sector_key": record.sector_key,
+            "message": record.message,
+            "payload": payload,
+            "acked": bool(record.acked),
+            "acked_at": record.acked_at.isoformat() if record.acked_at else None,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+        }
 
     # ------------------------------------------------------------------
     # LLM usage tracking

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- 📈 **A股趋势交易辅助系统** — 将 `Trend System` 重构为独立于自选股的全市场快照模块，新增主线板块扫描、龙头/龙二/前排结构、候选股与推荐仓位、持仓管理、风险状态机、系统诊断、盘前/日终快照与 `/api/v1/trend-system/*` 扩展接口（`portfolio` / `positions` / `diagnostics` / `status` / `recompute` / `alerts`）
 - 📊 **Web UI 详细报告按钮** (Fixes #214) — 历史记录页面新增「详细报告」按钮，点击后在右侧抽屉展示与推送通知格式一致的完整 Markdown 分析报告；新增 `GET /api/v1/history/{record_id}/markdown` API 端点
 - 🚀 **Web UI 一键生成今日报告** — 首页新增「生成今日报告」按钮（紫色），点击后二次确认触发自选股批量分析任务（个股分析+大盘复盘+通知发送）；新增 `POST /api/v1/analysis/batch` API 端点，支持防重复提交和异步执行
 - feat(search): add SearXNG support as quota-free fallback (Fixes #550)
@@ -18,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 🤖 **Agent models discovery API** — 新增 `GET /api/v1/agent/models`，返回当前配置下的可用模型部署列表（含 `primary`/`fallback`/`source`/`api_base` 元数据），供 Web UI 模型选择器直接使用
 - ⏰ **定时任务日志增强** — scheduler.py 增加详细日志输出，显示配置状态（交易日检查开关、定时任务开关、执行时间），便于故障排查
 ### Fixed
+- 🧱 **Trend System P0/P1 稳定性补强** — 首页切换为只读快照读取，重建流程保留 single-flight；旧版不兼容日终快照会自动失效为 `legacy`，避免 overview/candidates/portfolio/plan/diagnostics 读取报错
+- ⏱️ **Trend System 重算改为后台任务** — `POST /api/v1/trend-system/recompute` 支持后台模式，接口立即返回 `running`，重建过程通过 `/status.recompute_state` 追踪，避免前端长时间卡住
+- 🛡️ **Trend System 降级容错增强** — 全市场扫描对单股票异常改为逐条降级跳过，避免单点数据源失败导致整次快照 500；`degraded_system` 模式下流通市值缺失不再阻断候选股生成
+- 📐 **Trend System 仓位分配器约束修正** — 候选股改为“滚动分配”，同时约束总仓位、单股、同板块与风控上限，避免并发候选叠加后超配
+- 🚨 **Trend System 持仓情绪退出补强** — 新增龙头跌停预警，龙头炸板/跌停会传导到同主线持仓的情绪止盈判定
 - **GitHub Actions 筹码分布可配置** (#617) — workflow 不再硬编码 ENABLE_CHIP_DISTRIBUTION=false，支持通过 vars/secrets 覆盖；默认仍为 false 保持云端稳定性
 - 🐛 **analyze_trend 始终报 No historical data** (#600) — 根因：错误依赖 get_analysis_context 的 raw_data（该接口从未返回）；修复：改为优先 db.get_data_range、备选 DataFetcherManager 获取历史数据，与 pipeline 一致
 - 🐛 **筹码结构 LLM 未填写时兜底补全** (#589) — DeepSeek 等模型未正确填写 `chip_structure` 时，自动用数据源已获取的筹码数据补全，保证各模型展示一致；普通分析与 Agent 模式均生效
