@@ -14,6 +14,8 @@ YfinanceFetcher - 兜底数据源 (Priority 4)
 3. 失败后指数退避重试
 """
 
+from __future__ import annotations
+
 import csv
 import logging
 from datetime import datetime
@@ -142,7 +144,7 @@ class YfinanceFetcher(BaseFetcher):
             return f"{base}.BJ"
 
         # A股：根据代码前缀判断市场
-        if code.startswith(('600', '601', '603', '688')):
+        if code.startswith(('600', '601', '603', '605', '688')):
             return f"{code}.SS"
         elif code.startswith(('000', '002', '300')):
             return f"{code}.SZ"
@@ -343,6 +345,89 @@ class YfinanceFetcher(BaseFetcher):
             logger.error(f"[Yfinance] 获取 A 股指数行情失败: {e}")
 
         return None
+
+    def get_index_history(
+        self,
+        index_code: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: int = 260,
+    ) -> Optional[pd.DataFrame]:
+        """
+        获取指数历史行情（日线）。
+
+        Returns:
+            DataFrame with standardized columns: date/open/high/low/close/volume/amount/pct_chg
+        """
+        import yfinance as yf
+
+        yf_mapping = {
+            'sh000001': '000001.SS',
+            'sz399001': '399001.SZ',
+            'sz399006': '399006.SZ',
+            '000001': '000001.SS',
+            '399001': '399001.SZ',
+            '399006': '399006.SZ',
+        }
+        symbol = yf_mapping.get(index_code.lower(), yf_mapping.get(index_code, ""))
+        if not symbol:
+            return None
+
+        if end_date is None:
+            end_dt = datetime.now()
+        else:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        if start_date is None:
+            start_dt = end_dt - pd.Timedelta(days=max(days * 2, 365))
+        else:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+
+        try:
+            df = yf.download(
+                symbol,
+                start=start_dt.strftime("%Y-%m-%d"),
+                end=(end_dt + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+                interval="1d",
+                progress=False,
+                auto_adjust=False,
+            )
+        except Exception as e:
+            logger.warning(f"[Yfinance] 获取指数历史失败 {index_code}: {e}")
+            return None
+
+        if df is None or df.empty:
+            return None
+
+        out = df.reset_index().copy()
+        if isinstance(out.columns, pd.MultiIndex):
+            flattened = []
+            for col in out.columns:
+                if isinstance(col, tuple):
+                    flattened.append(next((part for part in col if part), ""))
+                else:
+                    flattened.append(str(col))
+            out.columns = flattened
+
+        rename_map = {
+            "Date": "date",
+            "Open": "open",
+            "High": "high",
+            "Low": "low",
+            "Close": "close",
+            "Volume": "volume",
+        }
+        out = out.rename(columns={k: v for k, v in rename_map.items() if k in out.columns})
+        if "date" not in out.columns or "close" not in out.columns:
+            return None
+
+        out["date"] = pd.to_datetime(out["date"], errors="coerce")
+        for col in ["open", "high", "low", "close", "volume"]:
+            if col in out.columns:
+                out[col] = pd.to_numeric(out[col], errors="coerce")
+        out["amount"] = 0.0
+        out["pct_chg"] = out["close"].pct_change().fillna(0.0) * 100.0
+        out = out.dropna(subset=["date", "close"]).sort_values("date").reset_index(drop=True)
+        return out[["date", "open", "high", "low", "close", "volume", "amount", "pct_chg"]]
 
     def _get_us_main_indices(self, yf) -> Optional[List[Dict[str, Any]]]:
         """获取美股主要指数行情（SPX、IXIC、DJI、VIX），复用 _fetch_yf_ticker_data"""

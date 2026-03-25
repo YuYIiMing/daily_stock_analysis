@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- 📈 **Structured quant concept-trend system V1** — 新增独立 `quant_*` 链路，基于东方财富概念板块构建市场 regime、板块阶段、股票特征、三模块入场信号、组合级回测与次日交易清单；新增 `/api/v1/quant-strategy/*` 接口与 Web UI「量化策略」工作台
+- 🛠️ **Quant manual sync controls in Web UI** — 量化策略页面的同步状态卡现支持手动执行“仅同步最新日”和“全窗口重同步”；同步完成后会刷新同步状态与交易计划，但不会自动触发结构化回测
+- 🧭 **Quant sync progress guidance** — 同步状态卡现正确展示概念归属覆盖股票数、已落库日线股票数，并新增“当日数据已完成 / 全量历史补齐中 / 全量历史已补齐”的进度提示，便于判断同步是否真正完成
 - 📊 **Web UI 详细报告按钮** (Fixes #214) — 历史记录页面新增「详细报告」按钮，点击后在右侧抽屉展示与推送通知格式一致的完整 Markdown 分析报告；新增 `GET /api/v1/history/{record_id}/markdown` API 端点
 - 🚀 **Web UI 一键生成今日报告** — 首页新增「生成今日报告」按钮（紫色），点击后二次确认触发自选股批量分析任务（个股分析+大盘复盘+通知发送）；新增 `POST /api/v1/analysis/batch` API 端点，支持防重复提交和异步执行
 - feat(search): add SearXNG support as quota-free fallback (Fixes #550)
@@ -18,6 +21,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 🤖 **Agent models discovery API** — 新增 `GET /api/v1/agent/models`，返回当前配置下的可用模型部署列表（含 `primary`/`fallback`/`source`/`api_base` 元数据），供 Web UI 模型选择器直接使用
 - ⏰ **定时任务日志增强** — scheduler.py 增加详细日志输出，显示配置状态（交易日检查开关、定时任务开关、执行时间），便于故障排查
 ### Fixed
+- 📈 **Quant sync coverage visibility, batched feature rebuild, and main-board pool expansion** — `/api/v1/quant-strategy/sync-status` 现返回概念板块覆盖数、概念归属覆盖股票数、股票池规模和最新特征日期；量化同步默认股票池改为全市场主板清单，并在大批量 `stock_daily` 回补时优先使用更稳的 Baostock 路径；量化特征重建改为按股票分批执行，支持 `--latest-feature-only` 仅重建最新信号日，避免大股票池下 OOM
+- 🧭 **Quant THS concept split** — 概念板块主目录现优先使用同花顺 `stock_board_concept_name_ths`，个股概念归属同步新增按 THS 概念详情页成分股抓取的路径，板块名称与成分股口径统一到 THS，修复 `绿色电力` 这类板块快照与成分归属不同名导致的漏识别
+- ⏱️ **Quant latest-day sync timeout reduction** — “仅同步最新日”现改为轻量同步路径，只更新最近窗口所需的个股日线、当日概念归属和当日板块快照；前端同步请求也使用更长的专用超时，避免长任务被 30 秒通用超时误判为失败
+- ⏭️ **Quant latest-day sync local fast path** — 若当日 `stock_daily / index / concept membership / board` 原始数据已在库中，“仅同步最新日”会直接跳过外部抓取，仅重建最新特征，减少因上游数据源波动导致的重复超时
+- 🧭 **Quant trade-plan board fallback** — 候选生成在板块代码与个股归属代码不一致时，先按板块名称匹配；若同日板块特征缺失，则回退到最近可用板块特征，避免因临时板块快照缺口直接出现假空计划
+- 🪄 **Quant board alias matching** — 候选生成与空计划诊断新增概念板块别名匹配，自动处理 `新能源 -> 新能源汽车`、`电网概念 -> 智能电网`、`CPO概念 -> 共封装光学(CPO)` 等常见命名差异，进一步压缩假缺口
+- 🧩 **Quant board supplement fallback merge** — 板块特征构建在 `board_code` 不一致但板块名一致或可安全别名映射时，会继承同日成分股补充字段（成员数、强势股数、涨停数、龙头信息），修复真实强板块被误落成全零广度的问题
+- 🔍 **Quant empty-plan diagnostics** — 交易计划为空时，接口和页面会返回空计划诊断，展示合格股票池、同日板块命中、近端板块回退、板块特征缺口、允许交易板块和主要阻断原因，帮助区分策略空仓与数据问题
+- 🧭 **Quant stage-ready diagnostics** — 空计划诊断新增 `stage_ready_stock_count`，并将“板块主题分够但阶段仍为 IGNORE”和“纯个股形态未触发”区分开来，减少误把阶段问题看成个股问题
+- 🚦 **Quant late-stage blocker diagnostics** — 空计划诊断新增 `stage_ready_distribution` 与 `setup_blocker_counts`，可直接识别“多数股票已在后期/CLIMAX，当前版本默认不做后期接力”与“初期/中期形态未触发”的差别
+- 🪟 **Quant empty-plan workspace simplification** — Web UI 将空计划区域重排为“结论 → 三层筛选路径 → 阶段/买点/数据卡点 → 细节展开”，优先解释“今天为什么没有计划单”，降低把诊断数字误解为交易信号的成本
+- 🧹 **Quant concept-only universe cleanup** — 无有效概念归属的股票在 `stock_daily_features` 中不再标记为 `eligible_universe=true`；候选生成也会忽略历史残留的 `未归类概念` 占位板块，避免伪板块污染交易计划诊断
+- 🗃️ **Linux container SQLite compatibility** — Linux 容器运行时优先使用 `pysqlite3-binary` 提供的新版 SQLite，降低宿主机与容器 SQLite 版本不一致时对量化数据库读写和特征重建的兼容风险
+- 📊 **Quant backtest summary consistency** — `QuantBacktestService` 现使用与 `quant_trade_ledger` 相同的“合并后成交”口径回填 `trade_count / win_count / loss_count / win_rate_pct`，修复回测摘要与逐笔成交条数不一致的问题
+- 🧾 **Quant trade detail enriched fields** — 结构化回测交易明细新增 `stock_name / entry_amount / exit_amount`，Web UI 已执行交易列表与交易详情抽屉同步展示股票名称和成交金额；当本地暂无可靠名称时，后端会稳定回退为 `股票+代码`，避免空白名称
+- 🗂️ **Local stock directory for stable name resolution** — 新增本地 `stock_directory` 主数据表，并在量化同步阶段批量更新股票代码与名称；交易明细名称解析现优先读取本地主数据，不再依赖请求时临时访问第三方数据源补名
 - **GitHub Actions 筹码分布可配置** (#617) — workflow 不再硬编码 ENABLE_CHIP_DISTRIBUTION=false，支持通过 vars/secrets 覆盖；默认仍为 false 保持云端稳定性
 - 🐛 **analyze_trend 始终报 No historical data** (#600) — 根因：错误依赖 get_analysis_context 的 raw_data（该接口从未返回）；修复：改为优先 db.get_data_range、备选 DataFetcherManager 获取历史数据，与 pipeline 一致
 - 🐛 **筹码结构 LLM 未填写时兜底补全** (#589) — DeepSeek 等模型未正确填写 `chip_structure` 时，自动用数据源已获取的筹码数据补全，保证各模型展示一致；普通分析与 Agent 模式均生效

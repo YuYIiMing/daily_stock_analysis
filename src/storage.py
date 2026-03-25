@@ -17,10 +17,20 @@ import hashlib
 import json
 import logging
 import re
+import sys
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Any, TYPE_CHECKING, Tuple
 
 import pandas as pd
+
+try:
+    # Prefer a newer bundled SQLite runtime inside Linux containers when available.
+    import pysqlite3 as sqlite3  # type: ignore
+
+    sys.modules["sqlite3"] = sqlite3
+except Exception:
+    pass
+
 from sqlalchemy import (
     create_engine,
     Column,
@@ -366,6 +376,244 @@ class BacktestSummary(Base):
     )
 
 
+class StockDirectory(Base):
+    """Local stock master directory used for stable code-to-name resolution."""
+
+    __tablename__ = 'stock_directory'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(16), nullable=False, index=True)
+    name = Column(String(64), nullable=False)
+    exchange = Column(String(16))
+    market = Column(String(32))
+    is_main_board = Column(Boolean, nullable=False, default=False, index=True)
+    list_status = Column(String(16), nullable=False, default='listed')
+    data_source = Column(String(50))
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('code', name='uix_stock_directory_code'),
+        Index('ix_stock_directory_main_board', 'is_main_board', 'code'),
+    )
+
+
+class IndexDailyFeature(Base):
+    """Daily index-level regime features for quant strategy."""
+
+    __tablename__ = 'index_daily_features'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    index_code = Column(String(16), nullable=False, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    close = Column(Float)
+    ma5 = Column(Float)
+    ma10 = Column(Float)
+    ma20 = Column(Float)
+    ma250 = Column(Float)
+    up_day_count_10 = Column(Integer, default=0)
+    regime_score = Column(Float, default=0.0)
+    data_source = Column(String(50))
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('index_code', 'trade_date', name='uix_index_daily_feature_code_date'),
+        Index('ix_index_daily_feature_code_trade_date', 'index_code', 'trade_date'),
+    )
+
+
+class ConceptBoardDailyFeature(Base):
+    """Daily concept-board level features for quant strategy."""
+
+    __tablename__ = 'concept_board_daily_features'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    board_code = Column(String(32), nullable=False, index=True)
+    board_name = Column(String(128), nullable=False, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    pct_chg = Column(Float)
+    amount = Column(Float)
+    turnover_rank_pct = Column(Float)
+    limit_up_count = Column(Integer, default=0)
+    strong_stock_count = Column(Integer, default=0)
+    breadth_ratio = Column(Float)
+    consistency_score = Column(Float, default=0.0)
+    theme_score = Column(Integer, default=0)
+    leader_stock_code = Column(String(16), index=True)
+    leader_stock_name = Column(String(64))
+    leader_2d_return = Column(Float)
+    leader_limit_up_3d = Column(Integer, default=0)
+    stage = Column(String(24), default='IGNORE', index=True)
+    data_source = Column(String(50))
+    raw_payload_json = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('board_code', 'trade_date', name='uix_concept_board_feature_code_date'),
+        Index('ix_concept_board_feature_code_trade_date', 'board_code', 'trade_date'),
+    )
+
+
+class StockConceptMembershipDaily(Base):
+    """Point-in-time stock-to-concept-board mapping."""
+
+    __tablename__ = 'stock_concept_membership_daily'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(16), nullable=False, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    board_code = Column(String(32), nullable=False, index=True)
+    board_name = Column(String(128), nullable=False)
+    is_primary = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('code', 'trade_date', 'board_code', name='uix_stock_concept_membership_daily'),
+        Index('ix_stock_concept_membership_code_trade_date', 'code', 'trade_date'),
+    )
+
+
+class StockDailyFeature(Base):
+    """Daily stock-level quant features."""
+
+    __tablename__ = 'stock_daily_features'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(16), nullable=False, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    board_code = Column(String(32), index=True)
+    board_name = Column(String(128))
+    close = Column(Float)
+    ma5 = Column(Float)
+    ma10 = Column(Float)
+    ma20 = Column(Float)
+    ma60 = Column(Float)
+    ret20 = Column(Float)
+    ret60 = Column(Float)
+    median_amount_20 = Column(Float)
+    median_turnover_20 = Column(Float)
+    above_ma60 = Column(Boolean, default=False)
+    eligible_universe = Column(Boolean, default=False, index=True)
+    signal_score = Column(Float)
+    trigger_module = Column(String(32), index=True)
+    stage = Column(String(24), index=True)
+    raw_payload_json = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('code', 'trade_date', name='uix_stock_daily_feature_code_date'),
+        Index('ix_stock_daily_feature_code_trade_date', 'code', 'trade_date'),
+    )
+
+
+class QuantBacktestRun(Base):
+    """Backtest run metadata for structured quant strategy."""
+
+    __tablename__ = 'quant_backtest_runs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    strategy_name = Column(String(64), nullable=False, default='concept_trend_v1')
+    market_scope = Column(String(32), nullable=False, default='cn_main_board')
+    board_source = Column(String(64), nullable=False, default='eastmoney_concept')
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, nullable=False, index=True)
+    initial_capital = Column(Float, nullable=False, default=1000000.0)
+    status = Column(String(24), nullable=False, default='pending', index=True)
+    summary_json = Column(Text)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index('ix_quant_backtest_run_strategy_created', 'strategy_name', 'created_at'),
+    )
+
+
+class QuantDailyTradeSignal(Base):
+    """Daily generated trade signals for a backtest run."""
+
+    __tablename__ = 'quant_daily_trade_signals'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(Integer, ForeignKey('quant_backtest_runs.id'), nullable=False, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    code = Column(String(16), nullable=False, index=True)
+    board_code = Column(String(32), index=True)
+    board_name = Column(String(128))
+    stage = Column(String(24), index=True)
+    entry_module = Column(String(32), nullable=False, index=True)
+    direction = Column(String(8), nullable=False, default='long')
+    signal_score = Column(Float, default=0.0)
+    planned_entry_price = Column(Float)
+    initial_stop_price = Column(Float)
+    planned_position_pct = Column(Float)
+    reason_json = Column(Text)
+    blocked_reason = Column(String(128))
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('run_id', 'trade_date', 'code', 'entry_module', name='uix_quant_signal_run_date_code_module'),
+        Index('ix_quant_signal_run_trade_date', 'run_id', 'trade_date'),
+    )
+
+
+class QuantTradeLedger(Base):
+    """Executed trades for a quant backtest run."""
+
+    __tablename__ = 'quant_trade_ledger'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(Integer, ForeignKey('quant_backtest_runs.id'), nullable=False, index=True)
+    code = Column(String(16), nullable=False, index=True)
+    board_code = Column(String(32), index=True)
+    board_name = Column(String(128))
+    entry_date = Column(Date, nullable=False, index=True)
+    exit_date = Column(Date, index=True)
+    entry_price = Column(Float)
+    exit_price = Column(Float)
+    shares = Column(Integer, nullable=False, default=0)
+    entry_module = Column(String(32), index=True)
+    stage = Column(String(24), index=True)
+    status = Column(String(24), nullable=False, default='open', index=True)
+    pnl_pct = Column(Float)
+    pnl_amount = Column(Float)
+    exit_reason = Column(String(64))
+    blocked_exit = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('run_id', 'code', 'entry_date', 'entry_module', name='uix_quant_trade_run_code_entry_module'),
+        Index('ix_quant_trade_run_code_entry', 'run_id', 'code', 'entry_date'),
+    )
+
+
+class QuantPortfolioEquityCurve(Base):
+    """Daily portfolio curve for a quant backtest run."""
+
+    __tablename__ = 'quant_portfolio_equity_curve'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(Integer, ForeignKey('quant_backtest_runs.id'), nullable=False, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    cash = Column(Float, nullable=False, default=0.0)
+    market_value = Column(Float, nullable=False, default=0.0)
+    equity = Column(Float, nullable=False, default=0.0)
+    drawdown_pct = Column(Float)
+    exposure_pct = Column(Float)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('run_id', 'trade_date', name='uix_quant_equity_run_trade_date'),
+        Index('ix_quant_equity_run_trade_date', 'run_id', 'trade_date'),
+    )
+
+
 class ConversationMessage(Base):
     """
     Agent 对话历史记录表
@@ -457,6 +705,8 @@ class DatabaseManager:
         """获取单例实例"""
         if cls._instance is None:
             cls._instance = cls()
+        elif not getattr(cls._instance, '_initialized', False):
+            cls._instance.__init__()
         return cls._instance
     
     @classmethod

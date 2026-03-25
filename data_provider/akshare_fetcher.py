@@ -1772,6 +1772,286 @@ class AkshareFetcher(BaseFetcher):
             logger.error(f"[Akshare] 新浪接口获取板块排行也失败: {e}")
             return None
 
+    def get_concept_board_rankings(self, n: int = 20) -> Optional[Tuple[List[Dict], List[Dict]]]:
+        """
+        获取概念板块涨跌榜（东方财富概念板块）。
+
+        Returns:
+            (top_boards, bottom_boards) or None when unavailable.
+        """
+        import akshare as ak
+
+        try:
+            self._set_random_user_agent()
+            self._enforce_rate_limit()
+
+            logger.info("[API调用] ak.stock_board_concept_name_em() 获取概念板块排行...")
+            df = ak.stock_board_concept_name_em()
+            if df is None or df.empty:
+                logger.warning("[Akshare] 概念板块排行数据为空")
+                return None
+
+            change_col = next((c for c in ["涨跌幅", "change_pct", "涨幅"] if c in df.columns), None)
+            name_col = next((c for c in ["板块名称", "板块", "name"] if c in df.columns), None)
+            code_col = next((c for c in ["板块代码", "代码", "code"] if c in df.columns), None)
+            if not change_col or not name_col:
+                logger.warning(f"[Akshare] 概念板块排行字段缺失: columns={list(df.columns)}")
+                return None
+
+            df = df.copy()
+            df[change_col] = pd.to_numeric(df[change_col], errors="coerce")
+            df = df.dropna(subset=[change_col])
+            if df.empty:
+                return None
+
+            top_df = df.nlargest(n, change_col)
+            bottom_df = df.nsmallest(n, change_col)
+
+            def _to_item(row: pd.Series) -> Dict[str, Any]:
+                item: Dict[str, Any] = {
+                    "name": str(row[name_col]),
+                    "change_pct": float(row[change_col]),
+                }
+                if code_col and code_col in row and pd.notna(row[code_col]):
+                    item["code"] = str(row[code_col])
+                return item
+
+            return (
+                [_to_item(row) for _, row in top_df.iterrows()],
+                [_to_item(row) for _, row in bottom_df.iterrows()],
+            )
+        except Exception as e:
+            logger.error(f"[Akshare] 获取概念板块排行失败: {e}")
+            return None
+
+    def get_concept_board_history(
+        self,
+        board_name: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: int = 30,
+    ) -> Optional[pd.DataFrame]:
+        """
+        获取概念板块历史行情（东方财富概念板块）。
+
+        Returns:
+            Standardized DataFrame with at least date/open/high/low/close columns.
+        """
+        import akshare as ak
+        from datetime import timedelta
+
+        try:
+            self._set_random_user_agent()
+            self._enforce_rate_limit()
+
+            if end_date is None:
+                end_dt = datetime.now()
+            else:
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            if start_date is None:
+                start_dt = end_dt - timedelta(days=max(days * 2, 30))
+            else:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+
+            start_fmt = start_dt.strftime("%Y%m%d")
+            end_fmt = end_dt.strftime("%Y%m%d")
+
+            logger.info(f"[API调用] ak.stock_board_concept_hist_em() 获取概念板块历史: {board_name}")
+            df = ak.stock_board_concept_hist_em(
+                symbol=board_name,
+                start_date=start_fmt,
+                end_date=end_fmt,
+                period="日k",
+                adjust="",
+            )
+            if df is None or df.empty:
+                logger.warning(f"[Akshare] 概念板块历史数据为空: {board_name}")
+                return None
+
+            rename_map = {
+                "日期": "date",
+                "开盘": "open",
+                "最高": "high",
+                "最低": "low",
+                "收盘": "close",
+                "成交量": "volume",
+                "成交额": "amount",
+                "涨跌幅": "pct_chg",
+                "板块名称": "board_name",
+                "板块代码": "board_code",
+            }
+            out = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns}).copy()
+
+            if "date" not in out.columns:
+                logger.warning(f"[Akshare] 概念板块历史缺少日期列: {board_name}")
+                return None
+
+            out["date"] = pd.to_datetime(out["date"], errors="coerce")
+            out = out.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+
+            for col in ["open", "high", "low", "close", "volume", "amount", "pct_chg"]:
+                if col in out.columns:
+                    out[col] = pd.to_numeric(out[col], errors="coerce")
+
+            out["board_name"] = board_name
+            return out
+        except Exception as e:
+            logger.warning(f"[Akshare] 获取概念板块历史失败: {board_name}, {e}")
+            return None
+
+    def get_stock_concept_boards(self, stock_code: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        获取个股所属概念板块（优先东方财富个股信息，失败时返回空列表）。
+        """
+        import akshare as ak
+
+        pure_code = normalize_stock_code(stock_code)
+        try:
+            self._set_random_user_agent()
+            self._enforce_rate_limit()
+
+            # Some akshare versions may accept stock code directly, others may not.
+            if hasattr(ak, "stock_board_concept_cons_em"):
+                try:
+                    direct_df = ak.stock_board_concept_cons_em(symbol=pure_code)
+                    if direct_df is not None and not direct_df.empty:
+                        records: List[Dict[str, Any]] = []
+                        for _, row in direct_df.iterrows():
+                            name = row.get("板块名称") or row.get("概念名称") or row.get("name")
+                            if name:
+                                records.append({"board_name": str(name), "is_primary": False})
+                        if records:
+                            return records
+                except Exception:
+                    # Expected on most versions when symbol must be board name.
+                    pass
+
+            info_df = ak.stock_individual_info_em(symbol=pure_code)
+            if info_df is None or info_df.empty:
+                return []
+
+            concept_value: Optional[str] = None
+            for _, row in info_df.iterrows():
+                item = str(row.get("item", "")).strip()
+                if "概念" in item:
+                    concept_value = str(row.get("value", "")).strip()
+                    if concept_value:
+                        break
+
+            if not concept_value:
+                return []
+
+            split_chars = [",", "，", ";", "；", "|", "/", "、"]
+            normalized = concept_value
+            for ch in split_chars:
+                normalized = normalized.replace(ch, ",")
+            names = [name.strip() for name in normalized.split(",") if name.strip()]
+
+            boards: List[Dict[str, Any]] = []
+            for idx, name in enumerate(names):
+                boards.append(
+                    {
+                        "board_name": name,
+                        "is_primary": idx == 0,
+                    }
+                )
+            return boards
+        except Exception as e:
+            logger.warning(f"[Akshare] 获取股票概念板块失败: {stock_code}, {e}")
+            return None
+
+    def get_index_history(
+        self,
+        index_code: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: int = 260,
+    ) -> Optional[pd.DataFrame]:
+        """
+        获取指数历史行情（日线）。
+        """
+        import akshare as ak
+        from datetime import timedelta
+
+        if end_date is None:
+            end_dt = datetime.now()
+        else:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        if start_date is None:
+            start_dt = end_dt - timedelta(days=max(days * 2, 365))
+        else:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+
+        start_fmt = start_dt.strftime("%Y%m%d")
+        end_fmt = end_dt.strftime("%Y%m%d")
+
+        symbols = [index_code]
+        if index_code.startswith(("sh", "sz")) and len(index_code) > 2:
+            symbols.append(index_code[2:])
+
+        for symbol in symbols:
+            try:
+                self._set_random_user_agent()
+                self._enforce_rate_limit()
+
+                df: Optional[pd.DataFrame] = None
+                if hasattr(ak, "index_zh_a_hist"):
+                    df = ak.index_zh_a_hist(
+                        symbol=symbol,
+                        period="daily",
+                        start_date=start_fmt,
+                        end_date=end_fmt,
+                    )
+                if (df is None or df.empty) and hasattr(ak, "stock_zh_index_daily"):
+                    daily = ak.stock_zh_index_daily(symbol=index_code)
+                    if daily is not None and not daily.empty:
+                        df = daily
+
+                if df is None or df.empty:
+                    continue
+
+                rename_map = {
+                    "日期": "date",
+                    "date": "date",
+                    "开盘": "open",
+                    "open": "open",
+                    "最高": "high",
+                    "high": "high",
+                    "最低": "low",
+                    "low": "low",
+                    "收盘": "close",
+                    "close": "close",
+                    "成交量": "volume",
+                    "volume": "volume",
+                    "成交额": "amount",
+                    "amount": "amount",
+                    "涨跌幅": "pct_chg",
+                    "pct_chg": "pct_chg",
+                }
+                out = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns}).copy()
+
+                if "date" not in out.columns or "close" not in out.columns:
+                    continue
+
+                out["date"] = pd.to_datetime(out["date"], errors="coerce")
+                out = out.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+                out = out[(out["date"] >= start_dt) & (out["date"] <= end_dt)]
+                if out.empty:
+                    continue
+
+                for col in ["open", "high", "low", "close", "volume", "amount", "pct_chg"]:
+                    if col in out.columns:
+                        out[col] = pd.to_numeric(out[col], errors="coerce")
+
+                out["index_code"] = index_code
+                return out
+            except Exception as e:
+                logger.debug(f"[Akshare] 获取指数历史失败: index={index_code}, symbol={symbol}, error={e}")
+                continue
+
+        logger.warning(f"[Akshare] 获取指数历史失败: {index_code}")
+        return None
+
     def get_sector_history(self, sector_name: str, days: int = 10) -> Optional[Dict[str, Any]]:
         """
         Get sector historical data for strength calculation.

@@ -283,9 +283,9 @@ class TushareFetcher(BaseFetcher):
             return f"{code}.BJ"
         
         # Regular stocks
-        # Shanghai: 600xxx, 601xxx, 603xxx, 688xxx (STAR Market)
+        # Shanghai: 600xxx, 601xxx, 603xxx, 605xxx, 688xxx (STAR Market)
         # Shenzhen: 000xxx, 002xxx, 300xxx (ChiNext)
-        if code.startswith(('600', '601', '603', '688')):
+        if code.startswith(('600', '601', '603', '605', '688')):
             return f"{code}.SH"
         elif code.startswith(('000', '002', '300')):
             return f"{code}.SZ"
@@ -689,6 +689,75 @@ class TushareFetcher(BaseFetcher):
             logger.error(f"[Tushare] 获取指数行情失败: {e}")
 
         return None
+
+    def get_index_history(
+        self,
+        index_code: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: int = 260,
+    ) -> Optional[pd.DataFrame]:
+        """
+        获取指数历史行情（日线）。
+
+        Returns:
+            DataFrame with standardized columns: date/open/high/low/close/volume/amount/pct_chg
+        """
+        if self._api is None:
+            return None
+
+        code = normalize_stock_code(index_code).upper().replace(".", "")
+        ts_code_map = {
+            "SH000001": "000001.SH",
+            "SZ399001": "399001.SZ",
+            "SZ399006": "399006.SZ",
+            "000001": "000001.SH",
+            "399001": "399001.SZ",
+            "399006": "399006.SZ",
+        }
+        ts_code = ts_code_map.get(code)
+        if not ts_code:
+            return None
+
+        if end_date is None:
+            end_dt = datetime.now()
+        else:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        if start_date is None:
+            start_dt = end_dt - pd.Timedelta(days=max(days * 2, 365))
+        else:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+
+        try:
+            self._check_rate_limit()
+            df = self._api.index_daily(
+                ts_code=ts_code,
+                start_date=start_dt.strftime("%Y%m%d"),
+                end_date=end_dt.strftime("%Y%m%d"),
+            )
+        except Exception as e:
+            logger.warning(f"[Tushare] 获取指数历史失败 {index_code}: {e}")
+            return None
+
+        if df is None or df.empty:
+            return None
+
+        rename_map = {
+            "trade_date": "date",
+            "vol": "volume",
+        }
+        out = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns}).copy()
+        if "date" not in out.columns:
+            return None
+
+        out["date"] = pd.to_datetime(out["date"], format="%Y%m%d", errors="coerce")
+        for col in ["open", "high", "low", "close", "volume", "amount", "pct_chg"]:
+            if col in out.columns:
+                out[col] = pd.to_numeric(out[col], errors="coerce")
+        if "amount" in out.columns:
+            out["amount"] = out["amount"] * 1000.0
+        out = out.dropna(subset=["date", "close"]).sort_values("date").reset_index(drop=True)
+        return out
 
     def get_market_stats(self) -> Optional[dict]:
         """

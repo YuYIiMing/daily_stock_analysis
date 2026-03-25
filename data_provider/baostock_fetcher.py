@@ -153,7 +153,7 @@ class BaostockFetcher(BaseFetcher):
                 return f"sz.{code}"
 
         # 根据代码前缀判断市场
-        if code.startswith(('600', '601', '603', '688')):
+        if code.startswith(('600', '601', '603', '605', '688')):
             return f"sh.{code}"
         elif code.startswith(('000', '002', '300')):
             return f"sz.{code}"

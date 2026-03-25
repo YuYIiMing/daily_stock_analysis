@@ -39,9 +39,11 @@ x-common: &common
     - ../templates:/app/templates:ro
     - ../api:/app/api:ro
     - ../bot:/app/bot:ro
+    - ../apps:/app/apps:ro
     - ../scripts:/app/scripts:ro
     - ../patch:/app/patch:ro
     - ../sources:/app/sources:ro
+    - ../static:/app/static
 
   # 代理设置（如果需要）
   # environment:

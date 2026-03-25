@@ -258,6 +258,35 @@ body {
   backdrop-filter: blur(10px) saturate(0.7);
 }
 
+/* ============ QUANT STRATEGY PAGE ============ */
+.quant-hero-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(140deg, rgba(7, 16, 28, 0.9), rgba(11, 22, 34, 0.82));
+}
+
+.quant-hero-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(700px 260px at 84% -10%, rgba(0, 242, 254, 0.16), transparent 62%),
+    radial-gradient(500px 180px at 6% 120%, rgba(0, 230, 118, 0.13), transparent 66%);
+}
+
+.quant-hero-stat {
+  display: flex;
+  min-height: 92px;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 0.6rem 0.75rem;
+  backdrop-filter: blur(6px);
+}
+
 /* Hover State */
 .bento-hover {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);

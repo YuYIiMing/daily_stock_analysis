@@ -294,6 +294,77 @@ class BaseFetcher(ABC):
         """
         return None
 
+    def get_concept_board_rankings(self, n: int = 20) -> Optional[Tuple[List[Dict], List[Dict]]]:
+        """
+        Get concept board rankings.
+
+        Args:
+            n: Return top/bottom n boards.
+
+        Returns:
+            Tuple: (top_concept_boards, bottom_concept_boards)
+            Each item should include at least `name` and `change_pct`.
+        """
+        return None
+
+    def get_concept_board_history(
+        self,
+        board_name: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: int = 30,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Get concept board historical daily data.
+
+        Args:
+            board_name: Concept board name.
+            start_date: Optional YYYY-MM-DD.
+            end_date: Optional YYYY-MM-DD.
+            days: Fallback lookback days when start_date is not provided.
+
+        Returns:
+            DataFrame on success, None on failure.
+        """
+        return None
+
+    def get_stock_concept_boards(self, stock_code: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get concept board memberships for a stock.
+
+        Args:
+            stock_code: Stock code.
+
+        Returns:
+            List of dicts. Each item should include at least:
+            - board_name
+            - board_code (optional)
+            - is_primary (optional)
+            None means unavailable; [] means no data.
+        """
+        return None
+
+    def get_index_history(
+        self,
+        index_code: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: int = 260,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Get index historical daily data.
+
+        Args:
+            index_code: Index code like sh000001/sz399001.
+            start_date: Optional YYYY-MM-DD.
+            end_date: Optional YYYY-MM-DD.
+            days: Fallback lookback days when start_date is not provided.
+
+        Returns:
+            DataFrame on success, None on failure.
+        """
+        return None
+
     def get_daily_data(
         self,
         stock_code: str, 
@@ -1200,4 +1271,91 @@ class DataFetcherManager:
                 logger.debug(f"[{fetcher.name}] 获取股票行业失败: {stock_code}, {e}")
                 continue
         logger.warning(f"[DataFetcher] 所有数据源获取股票行业失败: {stock_code}, last_error={last_error}")
+        return None
+
+    def get_concept_board_rankings(self, n: int = 20) -> Tuple[List[Dict], List[Dict]]:
+        """Get concept board rankings (auto failover)."""
+        for fetcher in self._fetchers:
+            try:
+                if hasattr(fetcher, "get_concept_board_rankings"):
+                    data = fetcher.get_concept_board_rankings(n)
+                    if data:
+                        logger.info(f"[{fetcher.name}] 获取概念板块排行成功")
+                        return data
+            except Exception as e:
+                logger.warning(f"[{fetcher.name}] 获取概念板块排行失败: {e}")
+                continue
+        return [], []
+
+    def get_concept_board_history(
+        self,
+        board_name: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: int = 30,
+    ) -> Optional[pd.DataFrame]:
+        """Get concept board history (auto failover)."""
+        last_error = None
+        for fetcher in self._fetchers:
+            try:
+                if hasattr(fetcher, "get_concept_board_history"):
+                    data = fetcher.get_concept_board_history(
+                        board_name=board_name,
+                        start_date=start_date,
+                        end_date=end_date,
+                        days=days,
+                    )
+                    if data is not None:
+                        logger.debug(f"[{fetcher.name}] 获取概念板块历史成功: {board_name}")
+                        return data
+            except Exception as e:
+                last_error = e
+                logger.debug(f"[{fetcher.name}] 获取概念板块历史失败: {board_name}, {e}")
+                continue
+        logger.warning(f"[DataFetcher] 所有数据源获取概念板块历史失败: {board_name}, last_error={last_error}")
+        return None
+
+    def get_stock_concept_boards(self, stock_code: str) -> Optional[List[Dict[str, Any]]]:
+        """Get stock concept boards (auto failover)."""
+        last_error = None
+        for fetcher in self._fetchers:
+            try:
+                if hasattr(fetcher, "get_stock_concept_boards"):
+                    boards = fetcher.get_stock_concept_boards(stock_code)
+                    if boards is not None:
+                        logger.debug(f"[{fetcher.name}] 获取股票概念板块成功: {stock_code} -> {len(boards)}")
+                        return boards
+            except Exception as e:
+                last_error = e
+                logger.debug(f"[{fetcher.name}] 获取股票概念板块失败: {stock_code}, {e}")
+                continue
+        logger.warning(f"[DataFetcher] 所有数据源获取股票概念板块失败: {stock_code}, last_error={last_error}")
+        return None
+
+    def get_index_history(
+        self,
+        index_code: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: int = 260,
+    ) -> Optional[pd.DataFrame]:
+        """Get index history (auto failover)."""
+        last_error = None
+        for fetcher in self._fetchers:
+            try:
+                if hasattr(fetcher, "get_index_history"):
+                    data = fetcher.get_index_history(
+                        index_code=index_code,
+                        start_date=start_date,
+                        end_date=end_date,
+                        days=days,
+                    )
+                    if data is not None:
+                        logger.debug(f"[{fetcher.name}] 获取指数历史成功: {index_code}")
+                        return data
+            except Exception as e:
+                last_error = e
+                logger.debug(f"[{fetcher.name}] 获取指数历史失败: {index_code}, {e}")
+                continue
+        logger.warning(f"[DataFetcher] 所有数据源获取指数历史失败: {index_code}, last_error={last_error}")
         return None

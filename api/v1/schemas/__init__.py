@@ -58,6 +58,18 @@ from api.v1.schemas.system_config import (
     SystemConfigValidationErrorResponse,
     SystemConfigConflictResponse,
 )
+from api.v1.schemas.quant_strategy import (
+    QuantBacktestDetailResponse,
+    QuantBacktestRunRequest,
+    QuantBacktestRunResponse,
+    QuantBacktestSummary,
+    QuantEquityCurveResponse,
+    QuantEquityPoint,
+    QuantTradeItem,
+    QuantTradeListResponse,
+    QuantTradePlanItem,
+    QuantTradePlanResponse,
+)
 
 __all__ = [
     # common
@@ -90,6 +102,16 @@ __all__ = [
     "BacktestResultItem",
     "BacktestResultsResponse",
     "PerformanceMetrics",
+    "QuantBacktestDetailResponse",
+    "QuantBacktestRunRequest",
+    "QuantBacktestRunResponse",
+    "QuantBacktestSummary",
+    "QuantEquityCurveResponse",
+    "QuantEquityPoint",
+    "QuantTradeItem",
+    "QuantTradeListResponse",
+    "QuantTradePlanItem",
+    "QuantTradePlanResponse",
     # system config
     "SystemConfigFieldSchema",
     "SystemConfigCategorySchema",

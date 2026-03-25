@@ -14,8 +14,10 @@ __all__ = [
     "history",
     "stocks",
     "backtest",
+    "quant_strategy",
     "system_config",
     "auth",
     "agent",
     "usage",
+    "batch_analysis",
 ]

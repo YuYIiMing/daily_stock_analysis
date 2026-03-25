@@ -7,10 +7,12 @@ import {
   LineChart, 
   Settings, 
   LogOut,
-  TrendingUp
+  TrendingUp,
+  CandlestickChart
 } from 'lucide-react';
 import HomePage from './pages/HomePage';
 import BacktestPage from './pages/BacktestPage';
+import QuantStrategyPage from './pages/QuantStrategyPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -47,6 +49,12 @@ const NAV_ITEMS: NavItem[] = [
         label: '回测',
         to: '/backtest',
         icon: LineChart,
+    },
+    {
+        key: 'quant',
+        label: '量化策略',
+        to: '/quant-strategy',
+        icon: CandlestickChart,
     },
     {
         key: 'settings',
@@ -190,6 +198,7 @@ const AppContent: React.FC = () => {
                     <Route path="/" element={<HomePage/>}/>
                     <Route path="/chat" element={<ChatPage/>}/>
                     <Route path="/backtest" element={<BacktestPage/>}/>
+                    <Route path="/quant-strategy" element={<QuantStrategyPage/>}/>
                     <Route path="/settings" element={<SettingsPage/>}/>
                     <Route path="/login" element={<LoginPage/>}/>
                     <Route path="*" element={<NotFoundPage/>}/>
