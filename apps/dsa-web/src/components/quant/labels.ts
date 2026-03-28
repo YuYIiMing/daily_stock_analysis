@@ -17,6 +17,10 @@ export function getModuleLabel(module?: string | null): string {
       return '突破'
     case 'PULLBACK':
       return '回调'
+    case 'CLIMAX_PULLBACK':
+      return '后期强趋势回踩'
+    case 'CLIMAX_WEAK_TO_STRONG':
+      return '后期弱转强'
     case 'LATE_WEAK_TO_STRONG':
       return '后期弱转强'
     case 'ALL':
@@ -62,12 +66,22 @@ export function getExitReasonLabel(reason?: string | null): string {
   switch (reason) {
     case 'take_profit':
       return '止盈'
+    case 'take_profit_10pct':
+      return '盈利 10% 分批止盈'
+    case 'take_profit_20pct':
+      return '盈利 20% 分批止盈'
     case 'take_profit_2r':
       return '2R 止盈'
     case 'take_profit_4r':
       return '4R 止盈'
     case 'trailing_stop':
       return '跟踪止盈'
+    case 'trend_exit':
+      return '趋势止盈'
+    case 'trend_exit_climax':
+      return '后期趋势止盈'
+    case 'emotion_exit':
+      return '情绪退出'
     case 'hard_stop':
       return '硬止损'
     case 'time_stop':

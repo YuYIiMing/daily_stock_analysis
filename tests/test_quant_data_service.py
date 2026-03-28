@@ -1368,6 +1368,157 @@ class QuantDataServiceTestCase(unittest.TestCase):
         self.assertEqual(summary["index_feature_latest_date"], "2026-01-03")
         self.assertEqual(summary["index_feature_count"], 2)
 
+    def test_compute_initial_stop_price_breakout_and_pullback_caps(self) -> None:
+        service = QuantDataService(db_manager=None, fetcher_manager=FakeFetcherManager())
+
+        breakout_stop = service._compute_initial_stop_price(
+            module="BREAKOUT",
+            close=100.0,
+            low=85.0,
+            ma5=97.0,
+            ma10=96.0,
+            ma20=92.0,
+            ma60=90.0,
+            platform_low_prev=70.0,
+            pullback_low=84.0,
+        )
+        pullback_stop = service._compute_initial_stop_price(
+            module="PULLBACK",
+            close=100.0,
+            low=95.0,
+            ma5=98.0,
+            ma10=97.0,
+            ma20=96.0,
+            ma60=97.0,
+            platform_low_prev=94.0,
+            pullback_low=95.0,
+        )
+
+        self.assertEqual(breakout_stop, 92.0)  # 8% cap: cannot be wider than 8%
+        self.assertEqual(pullback_stop, 95.0)  # structural stop already tighter than 6% cap
+
+    def test_compute_initial_stop_price_climax_modules_and_backward_alias(self) -> None:
+        service = QuantDataService(db_manager=None, fetcher_manager=FakeFetcherManager())
+
+        climax_pullback_stop = service._compute_initial_stop_price(
+            module="CLIMAX_PULLBACK",
+            close=100.0,
+            low=94.0,
+            ma5=97.0,
+            ma10=96.0,
+            ma20=95.0,
+            ma60=94.0,
+            platform_low_prev=93.0,
+            pullback_low=90.0,
+        )
+        alias_stop = service._compute_initial_stop_price(
+            module="LATE_WEAK_TO_STRONG",
+            close=100.0,
+            low=90.0,
+            ma5=94.0,
+            ma10=93.0,
+            ma20=92.0,
+            ma60=91.0,
+            platform_low_prev=89.0,
+            pullback_low=90.0,
+        )
+
+        self.assertEqual(climax_pullback_stop, 95.0)  # 5% cap dominates deep structural stop
+        self.assertEqual(alias_stop, 95.0)  # backward alias shares CLIMAX 5% cap logic
+
+    def test_build_stock_feature_records_raw_payload_contains_extended_fields(self) -> None:
+        service = QuantDataService(db_manager=None, fetcher_manager=FakeFetcherManager())
+        enriched = pd.DataFrame(
+            [
+                {
+                    "code": "600519",
+                    "trade_date": pd.Timestamp("2026-01-03"),
+                    "board_code": "BK_A",
+                    "board_name": "AI概念",
+                    "open": 100.0,
+                    "high": 104.0,
+                    "low": 99.0,
+                    "close": 103.0,
+                    "ma5": 101.0,
+                    "ma10": 100.0,
+                    "ma20": 98.0,
+                    "ma60": 95.0,
+                    "ret20": 15.0,
+                    "ret60": 28.0,
+                    "median_amount_20": 2.5e8,
+                    "median_turnover_20": 0.8,
+                    "listed_days": 400,
+                    "is_strong": True,
+                    "close_above_ma20_ratio": 0.9,
+                    "platform_width_pct": 6.0,
+                    "breakout_pct": 1.2,
+                    "amount_ratio_5": 1.3,
+                    "close_position_ratio": 0.82,
+                    "upper_shadow_pct": 2.0,
+                    "pullback_pct_5d": -3.0,
+                    "pullback_amount_ratio": 0.85,
+                    "low_vs_ma20_pct": 1.01,
+                    "low_vs_ma60_pct": 1.05,
+                    "lower_shadow_body_ratio": 0.6,
+                    "close_ge_open": True,
+                    "rebound_break_prev_high": True,
+                    "ret5": 8.0,
+                    "limit_up_count_5d": 1,
+                    "prev_close_below_ma5": False,
+                    "close_above_ma5": True,
+                    "close_above_prev_high": True,
+                    "weak_to_strong_amount_ratio": 1.2,
+                    "close_vs_ma5_pct": 1.1,
+                    "platform_high_prev": 102.0,
+                    "platform_low_prev": 96.0,
+                    "prev_high": 101.0,
+                    "prev_low": 97.0,
+                    "above_ma60": True,
+                    "amount_5d": 2.1e8,
+                    "breakout_count_3d": 2,
+                    "consecutive_new_high_3d": 2,
+                    "return_2d": 7.5,
+                    "close_above_ma10": True,
+                    "low_above_ma20": True,
+                    "pullback_volume_ratio": 0.9,
+                    "single_day_drop_pct": -1.2,
+                    "broke_ma10_with_volume": False,
+                    "broke_ma20": False,
+                    "is_limit_down": False,
+                    "close_to_5d_high_drawdown_pct": 1.8,
+                }
+            ]
+        )
+        board_frame = pd.DataFrame(
+            [
+                {
+                    "trade_date": pd.Timestamp("2026-01-03"),
+                    "board_code": "BK_A",
+                    "stage": "TREND",
+                    "theme_score": 3,
+                    "strong_stock_count": 5,
+                }
+            ]
+        )
+
+        rows = service._build_stock_feature_records(enriched, board_frame)
+
+        self.assertEqual(len(rows), 1)
+        payload = json.loads(rows[0]["raw_payload_json"])
+        self.assertIn("signal_low", payload)
+        self.assertIn("pullback_low", payload)
+        self.assertIn("ma10", payload)
+        self.assertIn("breakout_count_3d", payload)
+        self.assertIn("consecutive_new_high_3d", payload)
+        self.assertIn("return_2d", payload)
+        self.assertIn("pullback_volume_ratio", payload)
+        self.assertIn("broke_ma10_with_volume", payload)
+        self.assertIn("is_limit_down", payload)
+        self.assertIn("close_to_5d_high_drawdown_pct", payload)
+        self.assertIn("initial_stop_price", payload)
+        self.assertEqual(payload["signal_low"], 99.0)
+        self.assertEqual(payload["pullback_low"], 97.0)
+
 
 if __name__ == "__main__":
     unittest.main()

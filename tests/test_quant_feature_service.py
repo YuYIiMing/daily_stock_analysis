@@ -6,6 +6,7 @@ from __future__ import annotations
 import unittest
 from datetime import date
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from src.services.quant_feature_service import QuantFeatureService
 
@@ -30,7 +31,15 @@ class FakeQuantFeatureRepository:
             rows = [row for row in rows if getattr(row, "trade_date", None) == trade_date]
         return rows
 
-    def list_concept_board_features(self, *, board_code=None, trade_date=None, start_date=None, end_date=None, limit=None):
+    def list_concept_board_features(
+        self,
+        *,
+        board_code=None,
+        trade_date=None,
+        start_date=None,
+        end_date=None,
+        limit=None,
+    ):
         rows = list(self._board_rows)
         if board_code is not None:
             rows = [row for row in rows if getattr(row, "board_code", None) == board_code]
@@ -107,7 +116,7 @@ class QuantFeatureServiceTestCase(unittest.TestCase):
                     '{"open":12.2,"high":12.8,"low":12.0,"listed_days":1200,'
                     '"is_main_board":true,"is_st":false,"is_suspended":false,'
                     '"close_above_ma20_ratio":0.8,"platform_width_pct":12.0,'
-                    '"breakout_pct":2.3,"amount_ratio_5":1.25,"close_position_ratio":0.82,'
+                    '"breakout_pct":2.3,"amount_ratio_5":1.65,"close_position_ratio":0.82,'
                     '"upper_shadow_pct":1.2,"peer_confirm_count":1,'
                     '"platform_high":12.6,"platform_low":11.7,"prev_high":12.4,"prev_low":11.9}'
                 ),
@@ -155,7 +164,7 @@ class QuantFeatureServiceTestCase(unittest.TestCase):
                     '{"open":12.2,"high":12.8,"low":12.0,"listed_days":1200,'
                     '"is_main_board":true,"is_st":false,"is_suspended":false,'
                     '"close_above_ma20_ratio":0.8,"platform_width_pct":12.0,'
-                    '"breakout_pct":2.3,"amount_ratio_5":1.25,"close_position_ratio":0.82,'
+                    '"breakout_pct":2.3,"amount_ratio_5":1.65,"close_position_ratio":0.82,'
                     '"upper_shadow_pct":1.2,"peer_confirm_count":1,'
                     '"platform_high":12.6,"platform_low":11.7,"prev_high":12.4,"prev_low":11.9}'
                 ),
@@ -218,7 +227,7 @@ class QuantFeatureServiceTestCase(unittest.TestCase):
                     '{"open":18.1,"high":18.9,"low":17.9,"listed_days":1500,'
                     '"is_main_board":true,"is_st":false,"is_suspended":false,'
                     '"close_above_ma20_ratio":0.9,"platform_width_pct":9.0,'
-                    '"breakout_pct":2.1,"amount_ratio_5":1.35,"close_position_ratio":0.85,'
+                    '"breakout_pct":2.1,"amount_ratio_5":1.65,"close_position_ratio":0.85,'
                     '"upper_shadow_pct":1.1,"peer_confirm_count":1,'
                     '"platform_high":18.4,"platform_low":17.1,"prev_high":18.2,"prev_low":17.8}'
                 ),
@@ -325,6 +334,294 @@ class QuantFeatureServiceTestCase(unittest.TestCase):
         board_map = service.get_board_stage_map(date(2026, 3, 25))
 
         self.assertEqual(board_map, {})
+
+    def test_trade_candidates_support_climax_pullback_module_with_legacy_plan_fallback(self) -> None:
+        stock_rows = [
+            SimpleNamespace(
+                code="600188",
+                board_code="BK008",
+                board_name="光伏概念",
+                stage="CLIMAX",
+                close=25.2,
+                ma5=24.9,
+                ma10=24.7,
+                ma20=23.8,
+                ma60=21.2,
+                ret20=21.0,
+                ret60=30.0,
+                median_amount_20=6.5e8,
+                median_turnover_20=2.1,
+                signal_score=50.0,
+                trigger_module=None,
+                raw_payload_json='{"open":24.9,"high":25.35,"low":24.8,"amount_ratio_5":1.08}',
+            )
+        ]
+        repo = FakeQuantFeatureRepository([], stock_rows=stock_rows)
+        service = QuantFeatureService(repository=repo)
+        service.get_board_stage_map = lambda trade_date: {
+            "BK008": {
+                "board_name": "光伏概念",
+                "theme_score": 3,
+                "stage": "CLIMAX",
+                "stage_cycle_label": "后期",
+                "trade_allowed": True,
+                "components": {},
+                "feature_trade_date": "2026-03-25",
+            }
+        }
+
+        def fake_build_entry_plan(snapshot, *, stage, module=None):
+            if module == "CLIMAX_PULLBACK":
+                return None
+            if module == "PULLBACK":
+                return SimpleNamespace(
+                    module="PULLBACK",
+                    planned_entry_price=25.5,
+                    initial_stop_price=24.6,
+                    trigger_price=25.5,
+                    stop_reference="ma20_or_ma60_or_signal_low",
+                )
+            return None
+
+        with patch("src.services.quant_feature_service.choose_entry_module", return_value="CLIMAX_PULLBACK"), patch(
+            "src.services.quant_feature_service.build_entry_plan",
+            side_effect=fake_build_entry_plan,
+        ):
+            candidates = service.get_trade_candidates(date(2026, 3, 25))
+
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
+        self.assertEqual(candidate.entry_module, "CLIMAX_PULLBACK")
+        self.assertEqual(candidate.reason["entry_module_family"], "PULLBACK")
+        self.assertEqual(candidate.reason["entry_plan_module"], "PULLBACK")
+        self.assertEqual(candidate.reason["entry_module_source"], "core")
+        self.assertGreater(candidate.reason["stop_buffer_pct"], 0.0)
+        self.assertEqual(candidate.reason["board_match_source"], "same_day")
+
+    def test_trade_candidates_support_climax_weak_to_strong_module_scoring(self) -> None:
+        stock_rows = [
+            SimpleNamespace(
+                code="600099",
+                board_code="BK001",
+                board_name="AI概念",
+                stage="CLIMAX",
+                close=45.2,
+                ma5=44.0,
+                ma10=42.1,
+                ma20=39.8,
+                ma60=32.0,
+                ret20=32.0,
+                ret60=55.0,
+                median_amount_20=9e8,
+                median_turnover_20=2.5,
+                signal_score=60.0,
+                trigger_module=None,
+                raw_payload_json='{"open":44.0,"high":45.4,"low":43.95}',
+            )
+        ]
+        repo = FakeQuantFeatureRepository([], stock_rows=stock_rows)
+        service = QuantFeatureService(repository=repo)
+        service.get_board_stage_map = lambda trade_date: {
+            "BK001": {
+                "board_name": "AI概念",
+                "theme_score": 2,
+                "stage": "CLIMAX",
+                "stage_cycle_label": "后期",
+                "trade_allowed": True,
+                "components": {},
+                "feature_trade_date": "2026-03-25",
+            }
+        }
+
+        with patch(
+            "src.services.quant_feature_service.choose_entry_module",
+            return_value="CLIMAX_WEAK_TO_STRONG",
+        ), patch(
+            "src.services.quant_feature_service.build_entry_plan",
+            return_value=SimpleNamespace(
+                module="CLIMAX_WEAK_TO_STRONG",
+                planned_entry_price=45.6,
+                initial_stop_price=43.8,
+                trigger_price=45.6,
+                stop_reference="ma5_or_signal_low",
+            ),
+        ):
+            candidates = service.get_trade_candidates(date(2026, 3, 25))
+
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
+        self.assertEqual(candidate.entry_module, "CLIMAX_WEAK_TO_STRONG")
+        self.assertEqual(candidate.reason["entry_module_family"], "LATE_WEAK_TO_STRONG")
+        # 60(base) + 2*10(board) + 10(stage) + 8(module alias weight)
+        self.assertAlmostEqual(candidate.signal_score, 98.0, places=6)
+
+    def test_trade_candidates_use_stored_module_and_safe_defaults_when_core_returns_none(self) -> None:
+        stock_rows = [
+            SimpleNamespace(
+                code="600011",
+                board_code="BK001",
+                board_name="AI概念",
+                stage="EMERGING",
+                close=11.2,
+                ma5=10.9,
+                ma10=10.8,
+                ma20=10.5,
+                ma60=9.7,
+                ret20=11.0,
+                ret60=12.0,
+                median_amount_20=1.5e8,
+                median_turnover_20=0.6,
+                signal_score=40.0,
+                trigger_module="CLIMAX_WEAK_TO_STRONG",
+                raw_payload_json='{"amount_ratio_5":"1.25","is_main_board":"true"}',
+            )
+        ]
+        repo = FakeQuantFeatureRepository([], stock_rows=stock_rows)
+        service = QuantFeatureService(repository=repo)
+        service.get_board_stage_map = lambda trade_date: {
+            "BK001": {
+                "board_name": "AI概念",
+                "theme_score": 2,
+                "stage": "EMERGING",
+                "stage_cycle_label": "初期",
+                "trade_allowed": True,
+                "components": {},
+                "feature_trade_date": "2026-03-25",
+            }
+        }
+        captured_snapshot = {}
+
+        def fake_choose_entry_module(snapshot, *, stage):
+            captured_snapshot["snapshot"] = snapshot
+            return None
+
+        with patch(
+            "src.services.quant_feature_service.choose_entry_module",
+            side_effect=fake_choose_entry_module,
+        ), patch(
+            "src.services.quant_feature_service.build_entry_plan",
+            return_value=SimpleNamespace(
+                module="LATE_WEAK_TO_STRONG",
+                planned_entry_price=11.3,
+                initial_stop_price=10.7,
+                trigger_price=11.3,
+                stop_reference="ma5_or_signal_low",
+            ),
+        ):
+            candidates = service.get_trade_candidates(date(2026, 3, 25))
+
+        self.assertEqual(len(candidates), 1)
+        snapshot = captured_snapshot["snapshot"]
+        self.assertAlmostEqual(snapshot.open, 11.2, places=6)
+        self.assertAlmostEqual(snapshot.high, 11.2, places=6)
+        self.assertAlmostEqual(snapshot.low, 11.2, places=6)
+        self.assertTrue(snapshot.is_main_board)
+        self.assertAlmostEqual(snapshot.amount_ratio_5, 1.25, places=6)
+        self.assertEqual(candidates[0].entry_module, "CLIMAX_WEAK_TO_STRONG")
+        self.assertEqual(candidates[0].reason["entry_module_source"], "stored_feature")
+        self.assertEqual(candidates[0].reason["entry_plan_module"], "LATE_WEAK_TO_STRONG")
+        self.assertIn("planned_entry_price", candidates[0].reason)
+        self.assertIn("initial_stop_price", candidates[0].reason)
+
+    def test_trade_candidates_do_not_use_stored_module_when_stage_is_ignore(self) -> None:
+        stock_rows = [
+            SimpleNamespace(
+                code="600012",
+                board_code="BK002",
+                board_name="低位震荡概念",
+                stage="IGNORE",
+                close=12.1,
+                ma5=12.0,
+                ma10=11.9,
+                ma20=11.8,
+                ma60=10.5,
+                ret20=12.0,
+                ret60=15.0,
+                median_amount_20=1.6e8,
+                median_turnover_20=0.7,
+                signal_score=32.0,
+                trigger_module="BREAKOUT",
+                raw_payload_json='{"amount_ratio_5":"1.8","is_main_board":"true"}',
+            )
+        ]
+        repo = FakeQuantFeatureRepository([], stock_rows=stock_rows)
+        service = QuantFeatureService(repository=repo)
+        service.get_board_stage_map = lambda trade_date: {
+            "BK002": {
+                "board_name": "低位震荡概念",
+                "theme_score": 2,
+                "stage": "IGNORE",
+                "stage_cycle_label": "震荡",
+                "trade_allowed": True,
+                "components": {},
+                "feature_trade_date": "2026-03-25",
+            }
+        }
+
+        with patch(
+            "src.services.quant_feature_service.choose_entry_module",
+            return_value=None,
+        ), patch(
+            "src.services.quant_feature_service.build_entry_plan",
+        ) as mock_build_entry_plan:
+            candidates = service.get_trade_candidates(date(2026, 3, 25))
+
+        self.assertEqual(candidates, [])
+        mock_build_entry_plan.assert_not_called()
+
+    def test_score_candidate_prefers_pullback_over_marginal_breakout_with_same_base_context(self) -> None:
+        row = SimpleNamespace(
+            signal_score=50.0,
+            breakout_pct=1.05,
+            amount_ratio_5=1.52,
+            close_position_ratio=0.72,
+            platform_width_pct=11.5,
+            close_vs_ma5_pct=5.5,
+            prior_breakout_count_20d=1,
+        )
+        board_meta = {"theme_score": 2, "stage": "TREND"}
+
+        breakout_score = QuantFeatureService._score_candidate(row, board_meta, "BREAKOUT")
+        pullback_score = QuantFeatureService._score_candidate(row, board_meta, "PULLBACK")
+
+        self.assertGreater(pullback_score, breakout_score)
+
+    def test_score_candidate_rewards_strong_breakout_setup_over_marginal_breakout(self) -> None:
+        board_meta = {"theme_score": 2, "stage": "TREND"}
+        weak_breakout = SimpleNamespace(
+            signal_score=50.0,
+            breakout_pct=1.05,
+            amount_ratio_5=1.52,
+            close_position_ratio=0.72,
+            platform_width_pct=11.5,
+            close_vs_ma5_pct=5.5,
+            prior_breakout_count_20d=1,
+        )
+        strong_breakout = SimpleNamespace(
+            signal_score=50.0,
+            breakout_pct=2.4,
+            amount_ratio_5=1.9,
+            close_position_ratio=0.88,
+            platform_width_pct=7.5,
+            close_vs_ma5_pct=1.8,
+            prior_breakout_count_20d=0,
+        )
+
+        weak_score = QuantFeatureService._score_candidate(weak_breakout, board_meta, "BREAKOUT")
+        strong_score = QuantFeatureService._score_candidate(strong_breakout, board_meta, "BREAKOUT")
+
+        self.assertGreater(strong_score, weak_score)
+        self.assertGreater(strong_score - weak_score, 4.0)
+
+    def test_score_candidate_keeps_non_breakout_modules_stable(self) -> None:
+        row = SimpleNamespace(signal_score=50.0)
+        board_meta = {"theme_score": 2, "stage": "TREND"}
+
+        pullback_score = QuantFeatureService._score_candidate(row, board_meta, "PULLBACK")
+        climax_pullback_score = QuantFeatureService._score_candidate(row, board_meta, "CLIMAX_PULLBACK")
+
+        self.assertAlmostEqual(pullback_score, 97.0, places=6)
+        self.assertAlmostEqual(climax_pullback_score, 97.0, places=6)
 
 
 if __name__ == "__main__":

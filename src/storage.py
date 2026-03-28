@@ -510,6 +510,37 @@ class StockDailyFeature(Base):
     )
 
 
+class StockFundFlowDaily(Base):
+    """Daily stock fund flow data for quant strategy optimization."""
+
+    __tablename__ = 'stock_fund_flow_daily'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    code = Column(String(16), nullable=False, index=True)
+    close = Column(Float)
+    pct_chg = Column(Float)
+    main_net_inflow = Column(Float, default=0.0)
+    main_net_inflow_pct = Column(Float, default=0.0)
+    super_large_net = Column(Float, default=0.0)
+    super_large_pct = Column(Float, default=0.0)
+    large_net = Column(Float, default=0.0)
+    large_pct = Column(Float, default=0.0)
+    medium_net = Column(Float, default=0.0)
+    medium_pct = Column(Float, default=0.0)
+    small_net = Column(Float, default=0.0)
+    small_pct = Column(Float, default=0.0)
+    turnover_rate = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('code', 'trade_date', name='uix_fund_flow_code_date'),
+        Index('ix_fund_flow_code_date', 'code', 'trade_date'),
+        Index('ix_fund_flow_date', 'trade_date'),
+    )
+
+
 class QuantBacktestRun(Base):
     """Backtest run metadata for structured quant strategy."""
 

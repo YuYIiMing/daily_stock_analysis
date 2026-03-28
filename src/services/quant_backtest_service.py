@@ -108,7 +108,7 @@ class QuantBacktestService:
         run = self.repo.create_run(
             strategy_name=strategy_name,
             market_scope="cn_main_board",
-            board_source="eastmoney_concept",
+            board_source="ths_concept",
             start_date=start_date,
             end_date=end_date,
             initial_capital=initial_capital,
@@ -328,6 +328,7 @@ class QuantBacktestService:
         if candidate_stock_count == 0:
             if stage_ready_distribution.get("CLIMAX", 0) > 0:
                 setup_blocker_counts["climax_no_trigger"] = int(stage_ready_distribution.get("CLIMAX", 0))
+                setup_blocker_counts["climax_setup_not_ready"] = int(stage_ready_distribution.get("CLIMAX", 0))
             if stage_ready_distribution.get("EMERGING", 0) > 0:
                 setup_blocker_counts["emerging_setup_not_ready"] = int(stage_ready_distribution.get("EMERGING", 0))
             if stage_ready_distribution.get("TREND", 0) > 0:
@@ -338,7 +339,7 @@ class QuantBacktestService:
             summary = "已有候选股通过市场、板块和个股条件，可继续按计划执行。"
         elif stage_ready_stock_count > 0 and stage_ready_distribution.get("CLIMAX", 0) >= max(stage_ready_stock_count * 0.7, 1):
             primary_blocker = "late_stage_no_trade"
-            summary = "多数阶段就绪股票已处于后期/CLIMAX，当前版本默认不做后期接力，仅保留极少数后期弱转强入口。"
+            summary = "多数阶段就绪股票已处于后期/CLIMAX，当前版本仅在强趋势回踩或弱转强时参与，今日未触发后期入场。"
         elif stage_ready_stock_count == 0 and missing_board_feature_count > 0:
             primary_blocker = "board_stage_and_feature_gap"
             summary = "当前已映射板块均未进入可交易阶段，且仍有部分板块特征缺口。"

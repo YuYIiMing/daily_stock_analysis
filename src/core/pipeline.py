@@ -627,7 +627,7 @@ class StockAnalysisPipeline:
                 message = f"请分析 ETF {code} ({stock_name})，并生成决策仪表盘报告。注意使用 ETF 专用分析逻辑。"
             else:
                 message = f"请分析股票 {code} ({stock_name})，并生成决策仪表盘报告。"
-            agent_result = executor.run(message, context=initial_context, is_etf=is_etf)
+            agent_result = executor.run(message, context=initial_context)
 
             # 转换为 AnalysisResult
             result = self._agent_result_to_analysis_result(agent_result, code, stock_name, report_type, query_id)

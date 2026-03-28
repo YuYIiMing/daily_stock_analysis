@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import MISSING, asdict, dataclass, fields
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,11 +18,13 @@ from src.core.quant_features import (
     choose_entry_module,
     classify_board_stage,
     classify_market_regime,
+    compute_fund_flow_score,
     compute_theme_score,
     get_stage_cycle_label,
     is_board_trade_allowed,
 )
 from src.repositories.quant_feature_repo import QuantFeatureRepository
+from src.repositories.stock_fund_flow_repo import StockFundFlowRepository
 from src.storage import DatabaseManager, StockDailyFeature
 
 
@@ -56,14 +58,29 @@ class QuantFeatureService:
         "并购重组概念": ("股权转让(并购重组)",),
         "猪肉概念": ("猪肉",),
     }
+    MODULE_SCORE_WEIGHTS = {
+        # Slightly de-prioritize BREAKOUT and favor PULLBACK based on recent run diagnostics.
+        "BREAKOUT": 11.0,
+        "PULLBACK": 12.0,
+        "LATE_WEAK_TO_STRONG": 8.0,
+        # Forward-compatible aliases for revised daily strategy semantics.
+        "CLIMAX_PULLBACK": 12.0,
+        "CLIMAX_WEAK_TO_STRONG": 8.0,
+    }
+    MODULE_FAMILY_MAP = {
+        "CLIMAX_PULLBACK": "PULLBACK",
+        "CLIMAX_WEAK_TO_STRONG": "LATE_WEAK_TO_STRONG",
+    }
 
     def __init__(
         self,
         db_manager: Optional[DatabaseManager] = None,
         repository: Optional[QuantFeatureRepository] = None,
+        fund_flow_repo: Optional[StockFundFlowRepository] = None,
     ):
         self.db = db_manager or DatabaseManager.get_instance()
         self.repo = repository or QuantFeatureRepository(self.db)
+        self.fund_flow_repo = fund_flow_repo or StockFundFlowRepository(self.db)
 
     def get_market_regime(self, trade_date: date) -> MarketRegimeResult:
         """Return market regime from stored index features."""
@@ -109,7 +126,10 @@ class QuantFeatureService:
             result[row.board_code] = meta
         return result
 
-    def build_board_name_lookup(self, board_meta_map: Dict[str, Dict[str, Any]]) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    def build_board_name_lookup(
+        self,
+        board_meta_map: Dict[str, Dict[str, Any]],
+    ) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
         """Build exact-name and tolerant-alias lookups for board matching."""
         exact_lookup: Dict[str, Dict[str, Any]] = {}
         alias_lookup: Dict[str, Dict[str, Any]] = {}
@@ -197,11 +217,14 @@ class QuantFeatureService:
         board_name_exact_map, board_name_alias_map = self.build_board_name_lookup(board_map)
         fallback_board_name_exact_map, fallback_board_name_alias_map = self.build_recent_board_name_lookup(trade_date)
         rows = self.repo.list_stock_features(trade_date=trade_date, eligible_only=True)
+        
+        fund_flow_cache: Dict[str, Dict[str, float]] = {}
+        
         candidates: List[QuantCandidate] = []
         for row in rows:
             if (row.board_name or "") in self.EXCLUDED_BOARD_NAMES:
                 continue
-            board_meta, _ = self.resolve_board_meta(
+            board_meta, match_source = self.resolve_board_meta(
                 board_code=row.board_code,
                 board_name=row.board_name,
                 board_map=board_map,
@@ -214,59 +237,52 @@ class QuantFeatureService:
                 continue
             stage = str(board_meta.get("stage") or row.stage or "IGNORE")
             raw = self._load_raw_payload(row.raw_payload_json)
-            setup = StockSetupSnapshot(
-                code=row.code,
-                board_code=row.board_code or "",
-                board_name=row.board_name or "",
-                close=float(row.close or 0.0),
-                open=float(raw.get("open", row.close or 0.0)),
-                high=float(raw.get("high", row.close or 0.0)),
-                low=float(raw.get("low", row.close or 0.0)),
-                ma5=float(row.ma5 or 0.0),
-                ma10=float(row.ma10 or 0.0),
-                ma20=float(row.ma20 or 0.0),
-                ma60=float(row.ma60 or 0.0),
-                ret20=float(row.ret20 or 0.0),
-                ret60=float(row.ret60 or 0.0),
-                median_amount_20=float(row.median_amount_20 or 0.0),
-                median_turnover_20=float(row.median_turnover_20 or 0.0),
-                listed_days=int(raw.get("listed_days", 9999)),
-                is_main_board=bool(raw.get("is_main_board", True)),
-                is_st=bool(raw.get("is_st", False)),
-                is_suspended=bool(raw.get("is_suspended", False)),
-                close_above_ma20_ratio=float(raw.get("close_above_ma20_ratio", 1.0)),
-                platform_width_pct=float(raw.get("platform_width_pct", 0.0)),
-                breakout_pct=float(raw.get("breakout_pct", 0.0)),
-                amount_ratio_5=float(raw.get("amount_ratio_5", 1.0)),
-                close_position_ratio=float(raw.get("close_position_ratio", 1.0)),
-                upper_shadow_pct=float(raw.get("upper_shadow_pct", 0.0)),
-                peer_confirm_count=int(raw.get("peer_confirm_count", 0)),
-                pullback_pct_5d=float(raw.get("pullback_pct_5d", 0.0)),
-                pullback_amount_ratio=float(raw.get("pullback_amount_ratio", 1.0)),
-                low_vs_ma20_pct=float(raw.get("low_vs_ma20_pct", 1.0)),
-                low_vs_ma60_pct=float(raw.get("low_vs_ma60_pct", 1.0)),
-                lower_shadow_body_ratio=float(raw.get("lower_shadow_body_ratio", 0.0)),
-                close_ge_open=bool(raw.get("close_ge_open", False)),
-                rebound_break_prev_high=bool(raw.get("rebound_break_prev_high", False)),
-                ret5=float(raw.get("ret5", 0.0)),
-                limit_up_count_5d=int(raw.get("limit_up_count_5d", 0)),
-                prev_close_below_ma5=bool(raw.get("prev_close_below_ma5", False)),
-                close_above_ma5=bool(raw.get("close_above_ma5", False)),
-                close_above_prev_high=bool(raw.get("close_above_prev_high", False)),
-                weak_to_strong_amount_ratio=float(raw.get("weak_to_strong_amount_ratio", 1.0)),
-                close_vs_ma5_pct=float(raw.get("close_vs_ma5_pct", 0.0)),
-                platform_high=float(raw.get("platform_high", raw.get("breakout_high", 0.0))),
-                platform_low=float(raw.get("platform_low", raw.get("swing_low", 0.0))),
-                prev_high=float(raw.get("prev_high", 0.0)),
-                prev_low=float(raw.get("prev_low", 0.0)),
-            )
+            setup = self._build_stock_setup_snapshot(row=row, raw=raw)
             entry_module = choose_entry_module(setup, stage=stage)
+            entry_module_source = "core"
+            if not entry_module:
+                stored_module = self._as_str(getattr(row, "trigger_module", None))
+                if stored_module and stage != "IGNORE":
+                    entry_module = stored_module
+                    entry_module_source = "stored_feature"
             if not entry_module:
                 continue
-            entry_plan = build_entry_plan(setup, stage=stage, module=entry_module)
+            entry_plan, entry_plan_module = self._build_entry_plan_with_fallback(
+                setup=setup,
+                stage=stage,
+                entry_module=entry_module,
+            )
             if entry_plan is None:
                 continue
-            signal_score = self._score_candidate(row, board_meta, entry_module)
+            
+            code = str(getattr(row, "code", "") or "")
+            fund_flow_stats = None
+            if code and hasattr(self, "fund_flow_repo"):
+                if code not in fund_flow_cache:
+                    try:
+                        fund_flow_cache[code] = self.fund_flow_repo.get_rolling_stats(
+                            code=code,
+                            trade_date=trade_date,
+                            window=5,
+                        )
+                    except Exception:
+                        fund_flow_cache[code] = {}
+                fund_flow_stats = fund_flow_cache.get(code)
+            
+            signal_score = self._score_candidate(row, board_meta, entry_module, setup=setup, fund_flow_stats=fund_flow_stats)
+            planned_entry_price = self._safe_float(getattr(entry_plan, "planned_entry_price", 0.0), 0.0)
+            initial_stop_price = self._safe_float(getattr(entry_plan, "initial_stop_price", 0.0), 0.0)
+            stop_buffer_pct = 0.0
+            if planned_entry_price > 0:
+                stop_buffer_pct = max((planned_entry_price - initial_stop_price) / planned_entry_price * 100.0, 0.0)
+            
+            fund_flow_info = {}
+            if fund_flow_stats:
+                fund_flow_info = {
+                    "main_net_inflow_5d": fund_flow_stats.get("main_net_inflow_5d", 0.0),
+                    "main_net_inflow_pct": fund_flow_stats.get("latest_main_inflow_pct", 0.0),
+                }
+            
             candidates.append(
                 QuantCandidate(
                     code=row.code,
@@ -275,21 +291,149 @@ class QuantFeatureService:
                     stage=stage,
                     entry_module=entry_module,
                     signal_score=signal_score,
-                    planned_entry_price=entry_plan.planned_entry_price,
-                    initial_stop_price=entry_plan.initial_stop_price,
+                    planned_entry_price=planned_entry_price,
+                    initial_stop_price=initial_stop_price,
                     reason={
                         "board_theme_score": board_meta.get("theme_score"),
                         "stage": stage,
                         "stage_cycle_label": board_meta.get("stage_cycle_label"),
+                        "stage_source": "board_feature" if board_meta.get("stage") else "stock_feature",
                         "trade_allowed": board_meta.get("trade_allowed", False),
+                        "board_match_source": match_source,
                         "entry_module": entry_module,
-                        "trigger_price": entry_plan.trigger_price,
-                        "stop_reference": entry_plan.stop_reference,
+                        "entry_module_family": self._entry_module_family(entry_module),
+                        "entry_module_source": entry_module_source,
+                        "entry_plan_module": entry_plan_module,
+                        "trigger_price": self._safe_float(getattr(entry_plan, "trigger_price", 0.0), 0.0),
+                        "stop_reference": str(getattr(entry_plan, "stop_reference", "") or ""),
+                        "planned_entry_price": planned_entry_price,
+                        "initial_stop_price": initial_stop_price,
+                        "stop_buffer_pct": round(stop_buffer_pct, 4),
+                        "feature_trigger_module": self._as_str(getattr(row, "trigger_module", None)),
                         "board_feature_trade_date": board_meta.get("feature_trade_date"),
+                        **fund_flow_info,
                     },
                 )
             )
         return sorted(candidates, key=lambda item: item.signal_score, reverse=True)
+
+    def _build_stock_setup_snapshot(self, *, row: Any, raw: Dict[str, Any]) -> StockSetupSnapshot:
+        """Build a StockSetupSnapshot with forward-compatible payload passthrough."""
+        close = self._safe_float(getattr(row, "close", 0.0), 0.0)
+        ma5 = self._safe_float(getattr(row, "ma5", 0.0), 0.0)
+        ma10 = self._safe_float(getattr(row, "ma10", 0.0), 0.0)
+        ma20 = self._safe_float(getattr(row, "ma20", 0.0), 0.0)
+        ma60 = self._safe_float(getattr(row, "ma60", 0.0), 0.0)
+        base_values: Dict[str, Any] = {
+            "code": str(getattr(row, "code", "") or ""),
+            "board_code": str(getattr(row, "board_code", "") or ""),
+            "board_name": str(getattr(row, "board_name", "") or ""),
+            "close": close,
+            "open": self._safe_float(self._payload_or_attr(raw, row, "open", close), close),
+            "high": self._safe_float(self._payload_or_attr(raw, row, "high", close), close),
+            "low": self._safe_float(self._payload_or_attr(raw, row, "low", close), close),
+            "ma5": ma5,
+            "ma10": ma10,
+            "ma20": ma20,
+            "ma60": ma60,
+            "ret20": self._safe_float(getattr(row, "ret20", 0.0), 0.0),
+            "ret60": self._safe_float(getattr(row, "ret60", 0.0), 0.0),
+            "median_amount_20": self._safe_float(getattr(row, "median_amount_20", 0.0), 0.0),
+            "median_turnover_20": self._safe_float(getattr(row, "median_turnover_20", 0.0), 0.0),
+            "listed_days": self._safe_int(self._payload_or_attr(raw, row, "listed_days", 9999), 9999),
+            "is_main_board": self._safe_bool(self._payload_or_attr(raw, row, "is_main_board", True), True),
+            "is_st": self._safe_bool(self._payload_or_attr(raw, row, "is_st", False), False),
+            "is_suspended": self._safe_bool(self._payload_or_attr(raw, row, "is_suspended", False), False),
+            "close_above_ma20_ratio": self._safe_float(
+                self._payload_or_attr(raw, row, "close_above_ma20_ratio", 1.0),
+                1.0,
+            ),
+            "platform_width_pct": self._safe_float(self._payload_or_attr(raw, row, "platform_width_pct", 0.0), 0.0),
+            "breakout_pct": self._safe_float(self._payload_or_attr(raw, row, "breakout_pct", 0.0), 0.0),
+            "amount_ratio_5": self._safe_float(self._payload_or_attr(raw, row, "amount_ratio_5", 1.0), 1.0),
+            "close_position_ratio": self._safe_float(self._payload_or_attr(raw, row, "close_position_ratio", 1.0), 1.0),
+            "upper_shadow_pct": self._safe_float(self._payload_or_attr(raw, row, "upper_shadow_pct", 0.0), 0.0),
+            "peer_confirm_count": self._safe_int(self._payload_or_attr(raw, row, "peer_confirm_count", 0), 0),
+            "pullback_pct_5d": self._safe_float(self._payload_or_attr(raw, row, "pullback_pct_5d", 0.0), 0.0),
+            "pullback_amount_ratio": self._safe_float(
+                self._payload_or_attr(raw, row, "pullback_amount_ratio", 1.0),
+                1.0,
+            ),
+            "low_vs_ma20_pct": self._safe_float(self._payload_or_attr(raw, row, "low_vs_ma20_pct", 1.0), 1.0),
+            "low_vs_ma60_pct": self._safe_float(self._payload_or_attr(raw, row, "low_vs_ma60_pct", 1.0), 1.0),
+            "lower_shadow_body_ratio": self._safe_float(
+                self._payload_or_attr(raw, row, "lower_shadow_body_ratio", 0.0),
+                0.0,
+            ),
+            "close_ge_open": self._safe_bool(self._payload_or_attr(raw, row, "close_ge_open", False), False),
+            "rebound_break_prev_high": self._safe_bool(
+                self._payload_or_attr(raw, row, "rebound_break_prev_high", False),
+                False,
+            ),
+            "ret5": self._safe_float(self._payload_or_attr(raw, row, "ret5", 0.0), 0.0),
+            "limit_up_count_5d": self._safe_int(self._payload_or_attr(raw, row, "limit_up_count_5d", 0), 0),
+            "prev_close_below_ma5": self._safe_bool(
+                self._payload_or_attr(raw, row, "prev_close_below_ma5", False),
+                False,
+            ),
+            "close_above_ma5": self._safe_bool(
+                self._payload_or_attr(raw, row, "close_above_ma5", close >= ma5),
+                close >= ma5,
+            ),
+            "close_above_prev_high": self._safe_bool(
+                self._payload_or_attr(raw, row, "close_above_prev_high", False),
+                False,
+            ),
+            "weak_to_strong_amount_ratio": self._safe_float(
+                self._payload_or_attr(raw, row, "weak_to_strong_amount_ratio", 1.0),
+                1.0,
+            ),
+            "close_vs_ma5_pct": self._safe_float(self._payload_or_attr(raw, row, "close_vs_ma5_pct", 0.0), 0.0),
+            "platform_high": self._safe_float(
+                self._payload_or_attr(raw, row, "platform_high", self._payload_or_attr(raw, row, "breakout_high", 0.0)),
+                0.0,
+            ),
+            "platform_low": self._safe_float(
+                self._payload_or_attr(raw, row, "platform_low", self._payload_or_attr(raw, row, "swing_low", 0.0)),
+                0.0,
+            ),
+            "prev_high": self._safe_float(self._payload_or_attr(raw, row, "prev_high", 0.0), 0.0),
+            "prev_low": self._safe_float(self._payload_or_attr(raw, row, "prev_low", 0.0), 0.0),
+        }
+
+        snapshot_kwargs = dict(base_values)
+        for setup_field in fields(StockSetupSnapshot):
+            if setup_field.name in snapshot_kwargs:
+                continue
+            passthrough = self._payload_or_attr(raw, row, setup_field.name, MISSING)
+            if passthrough is MISSING:
+                if setup_field.default is not MISSING or setup_field.default_factory is not MISSING:
+                    continue
+                passthrough = self._fallback_by_annotation(setup_field.type)
+            snapshot_kwargs[setup_field.name] = self._coerce_by_annotation(
+                passthrough,
+                setup_field.type,
+                self._fallback_by_annotation(setup_field.type),
+            )
+        return StockSetupSnapshot(**snapshot_kwargs)
+
+    def _build_entry_plan_with_fallback(
+        self,
+        *,
+        setup: StockSetupSnapshot,
+        stage: str,
+        entry_module: str,
+    ) -> Tuple[Optional[Any], str]:
+        """Build entry plan with module alias fallback for forward-compatible modules."""
+        plan = build_entry_plan(setup, stage=stage, module=entry_module)
+        if plan is not None:
+            return plan, str(getattr(plan, "module", entry_module) or entry_module)
+        module_family = self._entry_module_family(entry_module)
+        if module_family != entry_module:
+            fallback_plan = build_entry_plan(setup, stage=stage, module=module_family)
+            if fallback_plan is not None:
+                return fallback_plan, str(getattr(fallback_plan, "module", module_family) or module_family)
+        return None, entry_module
 
     def _build_board_meta(self, row: Any) -> Dict[str, Any]:
         """Normalize persisted board feature rows into runtime metadata."""
@@ -340,7 +484,11 @@ class QuantFeatureService:
         )
         score = compute_theme_score(snapshot)
         trade_allowed = is_board_trade_allowed(score)
-        stage = apply_stage_demotion(classify_board_stage(snapshot, theme_score=score.theme_score), snapshot, theme_score=score.theme_score)
+        stage = apply_stage_demotion(
+            classify_board_stage(snapshot, theme_score=score.theme_score),
+            snapshot,
+            theme_score=score.theme_score,
+        )
         if not trade_allowed:
             stage = "IGNORE"
         trade_date = getattr(row, "trade_date", None)
@@ -398,20 +546,144 @@ class QuantFeatureService:
         return text
 
     @staticmethod
-    def _score_candidate(row: StockDailyFeature, board_meta: Dict[str, Any], entry_module: str) -> float:
+    def _score_candidate(
+        row: StockDailyFeature,
+        board_meta: Dict[str, Any],
+        entry_module: str,
+        *,
+        setup: Optional[StockSetupSnapshot] = None,
+        fund_flow_stats: Optional[Dict[str, float]] = None,
+    ) -> float:
         board_score = float(board_meta.get("theme_score", 0.0))
         stage_weight = {
             "EMERGING": 12.0,
             "TREND": 15.0,
             "CLIMAX": 10.0,
         }.get(str(board_meta.get("stage", "")), 0.0)
-        module_weight = {
-            "BREAKOUT": 12.0,
-            "PULLBACK": 10.0,
-            "LATE_WEAK_TO_STRONG": 8.0,
-        }.get(entry_module, 0.0)
+        module_weight = QuantFeatureService.MODULE_SCORE_WEIGHTS.get(entry_module, 0.0)
         base = float(row.signal_score or 0.0)
-        return round(base + board_score * 10.0 + stage_weight + module_weight, 2)
+        total_score = base + board_score * 10.0 + stage_weight + module_weight
+        if entry_module == "BREAKOUT":
+            metric_source = setup if setup is not None else row
+            breakout_pct = QuantFeatureService._safe_float(getattr(metric_source, "breakout_pct", 0.0), 0.0)
+            amount_ratio_5 = QuantFeatureService._safe_float(getattr(metric_source, "amount_ratio_5", 1.0), 1.0)
+            close_position_ratio = QuantFeatureService._safe_float(
+                getattr(metric_source, "close_position_ratio", 1.0),
+                1.0,
+            )
+            platform_width_pct = QuantFeatureService._safe_float(getattr(metric_source, "platform_width_pct", 0.0), 0.0)
+            close_vs_ma5_pct = QuantFeatureService._safe_float(getattr(metric_source, "close_vs_ma5_pct", 0.0), 0.0)
+            prior_breakout_count_20d = QuantFeatureService._safe_int(
+                getattr(metric_source, "prior_breakout_count_20d", 0),
+                0,
+            )
+            breakout_quality_adjustment = 0.0
+            breakout_quality_adjustment += min(max(breakout_pct - 1.0, 0.0) * 1.2, 2.5)
+            breakout_quality_adjustment += min(max(amount_ratio_5 - 1.5, 0.0) * 3.0, 2.0)
+            breakout_quality_adjustment += min(max(close_position_ratio - 0.7, 0.0) * 6.0, 1.5)
+            if 0 < platform_width_pct <= 8.0:
+                breakout_quality_adjustment += 1.0
+            elif platform_width_pct > 10.0:
+                breakout_quality_adjustment -= min((platform_width_pct - 10.0) * 0.7, 1.5)
+            if close_vs_ma5_pct > 4.0:
+                breakout_quality_adjustment -= min((close_vs_ma5_pct - 4.0) * 0.8, 2.0)
+            if prior_breakout_count_20d == 1:
+                breakout_quality_adjustment -= 1.0
+            total_score += breakout_quality_adjustment
+        
+        if fund_flow_stats:
+            main_inflow_5d = fund_flow_stats.get("main_net_inflow_5d", 0.0)
+            main_inflow_pct = fund_flow_stats.get("latest_main_inflow_pct", 0.0)
+            turnover_rate = fund_flow_stats.get("turnover_rate", 0.0)
+            fund_score = compute_fund_flow_score(
+                main_net_inflow_5d=main_inflow_5d,
+                main_net_inflow_pct=main_inflow_pct,
+                turnover_rate=turnover_rate,
+                entry_module=entry_module,
+            )
+            total_score += fund_score
+        
+        return round(total_score, 2)
+
+    @classmethod
+    def _entry_module_family(cls, module_name: Optional[str]) -> str:
+        text = str(module_name or "")
+        if not text:
+            return ""
+        return cls.MODULE_FAMILY_MAP.get(text, text)
+
+    @staticmethod
+    def _payload_or_attr(raw: Dict[str, Any], row: Any, key: str, default: Any) -> Any:
+        if key in raw and raw.get(key) is not None:
+            return raw.get(key)
+        value = getattr(row, key, MISSING)
+        if value is not MISSING and value is not None:
+            return value
+        return default
+
+    @staticmethod
+    def _fallback_by_annotation(annotation: Any) -> Any:
+        text = str(annotation)
+        if "bool" in text:
+            return False
+        if "int" in text:
+            return 0
+        if "float" in text:
+            return 0.0
+        if "str" in text:
+            return ""
+        return None
+
+    @classmethod
+    def _coerce_by_annotation(cls, value: Any, annotation: Any, default: Any) -> Any:
+        text = str(annotation)
+        if "bool" in text:
+            return cls._safe_bool(value, bool(default))
+        if "int" in text and "bool" not in text:
+            return cls._safe_int(value, int(default) if default is not None else 0)
+        if "float" in text:
+            return cls._safe_float(value, float(default) if default is not None else 0.0)
+        if "str" in text:
+            return str(value or "")
+        return value if value is not None else default
+
+    @staticmethod
+    def _safe_float(value: Any, default: float = 0.0) -> float:
+        if value is None:
+            return float(default)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    @staticmethod
+    def _safe_int(value: Any, default: int = 0) -> int:
+        if value is None:
+            return int(default)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return int(default)
+
+    @staticmethod
+    def _safe_bool(value: Any, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return bool(default)
+        if isinstance(value, (int, float)):
+            return bool(value)
+        text = str(value).strip().lower()
+        if text in {"true", "1", "yes", "y", "on"}:
+            return True
+        if text in {"false", "0", "no", "n", "off", ""}:
+            return False
+        return bool(default)
+
+    @staticmethod
+    def _as_str(value: Any) -> Optional[str]:
+        text = str(value).strip() if value is not None else ""
+        return text or None
 
     @staticmethod
     def _load_raw_payload(raw_payload_json: Optional[str]) -> Dict[str, Any]:

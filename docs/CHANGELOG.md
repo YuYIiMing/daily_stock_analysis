@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- 📈 **Structured quant concept-trend system V1** — 新增独立 `quant_*` 链路，基于东方财富概念板块构建市场 regime、板块阶段、股票特征、三模块入场信号、组合级回测与次日交易清单；新增 `/api/v1/quant-strategy/*` 接口与 Web UI「量化策略」工作台
+- 📈 **Structured quant concept-trend system V1** — 新增独立 `quant_*` 链路，基于同花顺概念板块构建市场 regime、板块阶段、股票特征、四模块入场信号、组合级回测与次日交易清单；新增 `/api/v1/quant-strategy/*` 接口与 Web UI「量化策略」工作台
+- 🧭 **Daily trend strategy V1 semantics** — 板块阶段分类器、四模块入场、结构止损 + 固定止损上限、`10% / 20%` 分批止盈、趋势退出、后期情绪退出与弱止损观察窗口已对齐到新的日线量化趋势系统 V1 语义
 - 🛠️ **Quant manual sync controls in Web UI** — 量化策略页面的同步状态卡现支持手动执行“仅同步最新日”和“全窗口重同步”；同步完成后会刷新同步状态与交易计划，但不会自动触发结构化回测
 - 🧭 **Quant sync progress guidance** — 同步状态卡现正确展示概念归属覆盖股票数、已落库日线股票数，并新增“当日数据已完成 / 全量历史补齐中 / 全量历史已补齐”的进度提示，便于判断同步是否真正完成
 - 📊 **Web UI 详细报告按钮** (Fixes #214) — 历史记录页面新增「详细报告」按钮，点击后在右侧抽屉展示与推送通知格式一致的完整 Markdown 分析报告；新增 `GET /api/v1/history/{record_id}/markdown` API 端点
@@ -21,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 🤖 **Agent models discovery API** — 新增 `GET /api/v1/agent/models`，返回当前配置下的可用模型部署列表（含 `primary`/`fallback`/`source`/`api_base` 元数据），供 Web UI 模型选择器直接使用
 - ⏰ **定时任务日志增强** — scheduler.py 增加详细日志输出，显示配置状态（交易日检查开关、定时任务开关、执行时间），便于故障排查
 ### Fixed
+- 📈 **Quant breakout score quality refinement** — `BREAKOUT` 候选分数现引入突破质量微调：结合突破幅度、放量强度、收盘位置、平台宽度、相对 `ma5` 偏离和近期重复突破次数做小幅奖惩，在不改触发门槛的前提下，让高质量突破更容易优先进入交易计划；最新基线回测由 `run_id=49` 的 `-3.35% / 6.01% / 87 笔` 改善到 `run_id=50` 的 `-3.08% / 5.77% / 87 笔`
 - 📈 **Quant sync coverage visibility, batched feature rebuild, and main-board pool expansion** — `/api/v1/quant-strategy/sync-status` 现返回概念板块覆盖数、概念归属覆盖股票数、股票池规模和最新特征日期；量化同步默认股票池改为全市场主板清单，并在大批量 `stock_daily` 回补时优先使用更稳的 Baostock 路径；量化特征重建改为按股票分批执行，支持 `--latest-feature-only` 仅重建最新信号日，避免大股票池下 OOM
 - 🧭 **Quant THS concept split** — 概念板块主目录现优先使用同花顺 `stock_board_concept_name_ths`，个股概念归属同步新增按 THS 概念详情页成分股抓取的路径，板块名称与成分股口径统一到 THS，修复 `绿色电力` 这类板块快照与成分归属不同名导致的漏识别
 - ⏱️ **Quant latest-day sync timeout reduction** — “仅同步最新日”现改为轻量同步路径，只更新最近窗口所需的个股日线、当日概念归属和当日板块快照；前端同步请求也使用更长的专用超时，避免长任务被 30 秒通用超时误判为失败

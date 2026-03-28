@@ -21,7 +21,7 @@ export const FilterRail: React.FC<FilterRailProps> = ({ filters, onChange, onApp
     <div className="mb-4 flex items-center justify-between gap-3">
       <div>
         <p className="text-sm font-semibold text-content-primary">策略过滤器</p>
-        <p className="text-xs text-content-tertiary mt-1">主板 + 概念板块 + 三模块</p>
+        <p className="text-xs text-content-tertiary mt-1">主板 + 概念板块 + 四模块</p>
       </div>
       <Badge variant="default">V1</Badge>
     </div>
@@ -47,7 +47,8 @@ export const FilterRail: React.FC<FilterRailProps> = ({ filters, onChange, onApp
           <option value="ALL">{getModuleLabel('ALL')}</option>
           <option value="BREAKOUT">{getModuleLabel('BREAKOUT')}</option>
           <option value="PULLBACK">{getModuleLabel('PULLBACK')}</option>
-          <option value="LATE_WEAK_TO_STRONG">{getModuleLabel('LATE_WEAK_TO_STRONG')}</option>
+          <option value="CLIMAX_PULLBACK">{getModuleLabel('CLIMAX_PULLBACK')}</option>
+          <option value="CLIMAX_WEAK_TO_STRONG">{getModuleLabel('CLIMAX_WEAK_TO_STRONG')}</option>
         </select>
       </label>
 

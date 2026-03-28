@@ -19,7 +19,8 @@ STAGE_CLIMAX = "CLIMAX"
 
 MODULE_BREAKOUT = "BREAKOUT"
 MODULE_PULLBACK = "PULLBACK"
-MODULE_LATE_WEAK_TO_STRONG = "LATE_WEAK_TO_STRONG"
+MODULE_CLIMAX_PULLBACK = "CLIMAX_PULLBACK"
+MODULE_CLIMAX_WEAK_TO_STRONG = "CLIMAX_WEAK_TO_STRONG"
 
 STAGE_CYCLE_LABELS = {
     STAGE_EMERGING: "初期",
@@ -139,7 +140,9 @@ class StockSetupSnapshot:
     is_suspended: bool = False
     close_above_ma20_ratio: float = 1.0
     platform_width_pct: float = 0.0
+    platform_days: int = 0
     breakout_pct: float = 0.0
+    prior_breakout_count_20d: int = 0
     amount_ratio_5: float = 1.0
     close_position_ratio: float = 1.0
     upper_shadow_pct: float = 0.0
@@ -162,6 +165,37 @@ class StockSetupSnapshot:
     platform_low: float = 0.0
     prev_high: float = 0.0
     prev_low: float = 0.0
+    volatility_20d: float = 0.0
+    main_net_inflow_5d: float = 0.0
+    main_net_inflow_pct: float = 0.0
+    turnover_rate: float = 0.0
+
+
+def _get_adaptive_stop_cap(
+    *,
+    stage: str,
+    module: str,
+    volatility_20d: float = 0.0,
+) -> float:
+    base_caps = {
+        STAGE_EMERGING: 0.10,
+        STAGE_TREND: 0.06,
+        STAGE_CLIMAX: 0.05,
+    }
+    module_factors = {
+        MODULE_BREAKOUT: 1.0,
+        MODULE_PULLBACK: 0.9,
+        MODULE_CLIMAX_PULLBACK: 0.8,
+        MODULE_CLIMAX_WEAK_TO_STRONG: 0.8,
+    }
+    base_cap = base_caps.get(stage, 0.08)
+    factor = module_factors.get(module, 1.0)
+    if volatility_20d > 0.035:
+        factor = min(factor * 1.15, 1.3)
+    elif volatility_20d > 0.025:
+        factor = min(factor * 1.05, 1.2)
+    adaptive_cap = base_cap * factor
+    return max(0.03, min(0.12, adaptive_cap))
 
 
 def compute_index_regime(snapshot: IndexSnapshot) -> IndexRegimeResult:
@@ -187,7 +221,6 @@ def classify_market_regime(snapshots: Sequence[IndexSnapshot]) -> MarketRegimeRe
         return MarketRegimeResult(score=score, regime=RISK_ON, max_exposure_pct=70.0, index_results=results)
     if score >= 1.0:
         return MarketRegimeResult(score=score, regime=NEUTRAL, max_exposure_pct=30.0, index_results=results)
-    # Risk-off keeps a defensive probe bucket to align with <=20% exposure rule.
     return MarketRegimeResult(score=score, regime=RISK_OFF, max_exposure_pct=20.0, index_results=results)
 
 
@@ -243,35 +276,91 @@ def classify_board_stage(snapshot: ConceptBoardSnapshot, *, theme_score: Optiona
     if leader is None or current_score <= 1:
         return STAGE_IGNORE
 
-    climax_hits = sum(
-        [
-            leader.return_2d >= 20.0 or leader.ret20 >= 20.0,
-            leader.limit_up_count_3d >= 2,
-            snapshot.limit_up_count >= 5,
-            snapshot.top5_avg_pct >= 3.0,
-            leader.close_vs_ma5_pct >= 3.0,
-            snapshot.big_drop_ratio <= 0.03,
-        ]
+    min_strong_required = max(3, int(snapshot.member_count * 0.12 + 0.999))
+    leader_acceleration_core = (
+        leader.return_2d >= 15.0
+        and leader.close_vs_ma5_pct >= 8.0
+        and (
+            leader.limit_up_count_3d >= 2
+            or (leader.breakout_count_3d >= 2 and leader.consecutive_new_high_3d >= 2)
+        )
     )
-    if climax_hits >= 4:
+    board_consensus_core = (
+        snapshot.strong_stock_count >= min_strong_required
+        and snapshot.top5_avg_pct >= 7.0
+        and snapshot.big_drop_ratio <= 0.10
+        and (
+            snapshot.limit_up_count >= 3
+            or snapshot.turnover_rank_pct <= 0.05
+            or snapshot.strong_stock_ratio >= 0.12
+        )
+    )
+    overheat_confirmation = any(
+        (
+            leader.close_vs_ma5_pct >= 10.0,
+            snapshot.limit_up_count >= 5,
+            snapshot.top5_avg_pct >= 9.0,
+            snapshot.strong_stock_ratio >= 0.18,
+        )
+    )
+    if leader_acceleration_core and board_consensus_core and overheat_confirmation:
         return STAGE_CLIMAX
 
-    if (
-        leader.consecutive_new_high_3d >= 2
-        and leader.close_above_ma10
+    trend_evidence = (
+        leader.consecutive_new_high_3d >= 3
+        or (leader.consecutive_new_high_3d >= 2 and leader.breakout_count_3d >= 2)
+    )
+    trend_structure_intact = (
+        leader.close_above_ma10
         and leader.low_above_ma20
+        and not leader.broke_ma20
+        and leader.close_to_5d_high_drawdown_pct <= 8.0
         and leader.pullback_volume_ratio <= 1.0
-        and snapshot.up_days_3d >= 2
-        and 1 <= snapshot.limit_up_count <= 4
+    )
+    trend_board_confirmations = sum(
+        (
+            snapshot.up_days_3d >= 2,
+            snapshot.change_3d_pct > 0,
+            snapshot.limit_up_count >= 1,
+            snapshot.strong_stock_count >= 3,
+            snapshot.strong_stock_ratio >= 0.05,
+        )
+    )
+    if (
+        current_score >= 2
+        and trend_evidence
+        and trend_structure_intact
+        and trend_board_confirmations >= 2
     ):
         return STAGE_TREND
 
+    front_row_turnover_dominance = (
+        snapshot.turnover_rank_pct <= 0.08
+        and snapshot.amount > 0
+        and snapshot.strong_stock_count >= 2
+    )
+    front_row_concentration = (
+        snapshot.top5_avg_pct >= 3.0
+        and snapshot.strong_stock_count >= 2
+        and 0.03 <= snapshot.strong_stock_ratio <= 0.12
+    )
+    emerging_confirmations = sum(
+        (
+            front_row_turnover_dominance,
+            front_row_concentration,
+            snapshot.change_3d_pct > 0,
+            snapshot.up_days_3d >= 2,
+            snapshot.strong_stock_count >= 2 or snapshot.strong_stock_ratio >= 0.03,
+            0.0 <= leader.close_to_5d_high_drawdown_pct <= 6.0,
+            -2.0 <= leader.close_vs_ma5_pct <= 6.0,
+        )
+    )
     if (
         current_score >= 2
-        and leader.breakout_count_3d >= 1
+        and (leader.breakout_count_3d >= 1 or leader.consecutive_new_high_3d >= 1)
         and 1 <= snapshot.limit_up_count <= 3
-        and snapshot.change_3d_pct > 0
-        and 0.0 <= leader.close_to_5d_high_drawdown_pct <= 4.0
+        and (front_row_turnover_dominance or front_row_concentration)
+        and emerging_confirmations >= 2
     ):
         return STAGE_EMERGING
 
@@ -287,7 +376,7 @@ def apply_stage_demotion(current_stage: str, snapshot: ConceptBoardSnapshot, *, 
     if leader.is_limit_down or leader.broke_ma20 or snapshot.limit_down_count >= 2 or current_score <= 1:
         return STAGE_IGNORE
     if current_stage in (STAGE_TREND, STAGE_CLIMAX):
-        degrade = any(
+        should_demote = any(
             (
                 leader.single_day_drop_pct <= -7.0,
                 leader.broke_ma10_with_volume,
@@ -295,7 +384,7 @@ def apply_stage_demotion(current_stage: str, snapshot: ConceptBoardSnapshot, *, 
                 snapshot.prev_limit_up_count > 0 and snapshot.limit_up_count <= snapshot.prev_limit_up_count * 0.5 and leader.limit_up_count_3d == 0,
             )
         )
-        if degrade:
+        if should_demote:
             return STAGE_TREND if current_stage == STAGE_CLIMAX else STAGE_EMERGING
     return current_stage
 
@@ -313,50 +402,82 @@ def passes_universe_filter(snapshot: StockSetupSnapshot) -> bool:
 
 
 def detect_breakout_module(snapshot: StockSetupSnapshot, *, stage: str) -> bool:
-    return (
+    platform_days = _resolve_platform_days(snapshot)
+    breakout_quality_ok = _passes_breakout_quality_gate(snapshot)
+    base_conditions = (
         stage in (STAGE_EMERGING, STAGE_TREND)
-        and snapshot.platform_width_pct <= 20.0
-        and snapshot.close_above_ma20_ratio >= 0.60
-        and snapshot.breakout_pct >= 0.2
-        and snapshot.amount_ratio_5 >= 1.05
-        and snapshot.close_position_ratio >= 0.55
-        and snapshot.upper_shadow_pct <= 6.0
-        and snapshot.peer_confirm_count >= 0
+        and 5 <= platform_days <= 15
+        and snapshot.close_above_ma20_ratio >= 0.80
+        and snapshot.upper_shadow_pct <= 3.0
+        and snapshot.peer_confirm_count >= 1
+        and breakout_quality_ok
     )
+    if not base_conditions:
+        return False
+    if stage == STAGE_EMERGING:
+        return (
+            snapshot.platform_width_pct <= 8.0
+            and snapshot.breakout_pct >= 2.0
+            and snapshot.amount_ratio_5 >= 2.0
+            and snapshot.close_position_ratio >= 0.80
+            and snapshot.close_vs_ma5_pct <= 4.0
+        )
+    if stage == STAGE_TREND:
+        return (
+            snapshot.platform_width_pct <= 12.0
+            and snapshot.breakout_pct >= 1.0
+            and snapshot.amount_ratio_5 >= 1.50
+            and snapshot.close_position_ratio >= 0.70
+        )
+    return False
 
 
 def detect_pullback_module(snapshot: StockSetupSnapshot, *, stage: str) -> bool:
     has_stop_signal = (
-        (snapshot.lower_shadow_body_ratio >= 0.30 and snapshot.close_ge_open)
-        or (snapshot.rebound_break_prev_high and snapshot.amount_ratio_5 >= 1.05)
+        (snapshot.lower_shadow_body_ratio >= 0.50 and snapshot.close_ge_open)
+        or (snapshot.rebound_break_prev_high and snapshot.amount_ratio_5 >= 1.20)
     )
+    prior_breakout_ready = _has_prior_breakout_evidence(snapshot)
     return (
         stage == STAGE_TREND
-        and (snapshot.low_vs_ma20_pct >= 0.985 or snapshot.low_vs_ma60_pct >= 0.985)
-        and -12.0 <= snapshot.pullback_pct_5d <= -1.0
-        and snapshot.pullback_amount_ratio <= 1.1
+        and prior_breakout_ready
+        and (snapshot.low_vs_ma20_pct >= 0.99 or snapshot.low_vs_ma60_pct >= 0.99)
+        and -8.0 <= snapshot.pullback_pct_5d <= -2.0
+        and snapshot.pullback_amount_ratio <= 0.80
         and has_stop_signal
     )
 
 
-def detect_late_weak_to_strong_module(snapshot: StockSetupSnapshot, *, stage: str) -> bool:
-    # CLIMAX is handled as "strong trend or no-trade" in this phase.
-    # Keep an escape hatch only for very rare extreme re-acceleration setups.
+def detect_climax_pullback_module(snapshot: StockSetupSnapshot, *, stage: str) -> bool:
+    """Detect strong-trend pullback continuation setup in climax."""
     if stage != STAGE_CLIMAX:
         return False
     return (
-        snapshot.ret5 >= 20.0
-        and snapshot.limit_up_count_5d >= 2
+        (snapshot.ret5 >= 15.0 or snapshot.limit_up_count_5d >= 2)
+        and (snapshot.low <= snapshot.ma5 * 1.01 or snapshot.low <= snapshot.ma10 * 1.01)
+        and snapshot.pullback_amount_ratio <= 0.90
+        and snapshot.close_above_ma5
+        and snapshot.upper_shadow_pct <= 4.0
+        and snapshot.amount_ratio_5 <= 1.20
+    )
+
+
+def detect_climax_weak_to_strong_module(snapshot: StockSetupSnapshot, *, stage: str) -> bool:
+    """Detect climax re-acceleration after a brief weakness."""
+    if stage != STAGE_CLIMAX:
+        return False
+    return (
+        (snapshot.ret5 >= 15.0 or snapshot.limit_up_count_5d >= 2)
         and snapshot.prev_close_below_ma5
         and snapshot.close_above_ma5
         and snapshot.close_above_prev_high
         and snapshot.rebound_break_prev_high
-        and snapshot.weak_to_strong_amount_ratio >= 1.30
-        and snapshot.amount_ratio_5 >= 1.15
-        and snapshot.amount_ratio_5 <= 2.20
+        and snapshot.weak_to_strong_amount_ratio >= 1.20
+        and snapshot.amount_ratio_5 >= 1.20
+        and snapshot.amount_ratio_5 <= 2.50
         and snapshot.low <= snapshot.ma5 * 1.005
-        and snapshot.upper_shadow_pct <= 2.5
-        and -0.5 <= snapshot.close_vs_ma5_pct <= 3.0
+        and snapshot.upper_shadow_pct <= 3.0
+        and -0.5 <= snapshot.close_vs_ma5_pct <= 5.0
     )
 
 
@@ -365,13 +486,15 @@ def choose_entry_module(snapshot: StockSetupSnapshot, *, stage: str) -> Optional
     if not passes_universe_filter(snapshot):
         return None
     if stage == STAGE_CLIMAX:
-        return MODULE_LATE_WEAK_TO_STRONG if detect_late_weak_to_strong_module(snapshot, stage=stage) else None
+        if detect_climax_weak_to_strong_module(snapshot, stage=stage):
+            return MODULE_CLIMAX_WEAK_TO_STRONG
+        if detect_climax_pullback_module(snapshot, stage=stage):
+            return MODULE_CLIMAX_PULLBACK
+        return None
     if detect_breakout_module(snapshot, stage=stage):
         return MODULE_BREAKOUT
     if detect_pullback_module(snapshot, stage=stage):
         return MODULE_PULLBACK
-    if detect_late_weak_to_strong_module(snapshot, stage=stage):
-        return MODULE_LATE_WEAK_TO_STRONG
     return None
 
 
@@ -387,22 +510,24 @@ def build_entry_plan(
         return None
 
     if chosen_module == MODULE_BREAKOUT:
-        return _build_breakout_entry_plan(snapshot)
+        return _build_breakout_entry_plan(snapshot, stage=stage)
     if chosen_module == MODULE_PULLBACK:
-        return _build_pullback_entry_plan(snapshot)
-    if chosen_module == MODULE_LATE_WEAK_TO_STRONG:
-        return _build_late_w2s_entry_plan(snapshot)
+        return _build_pullback_entry_plan(snapshot, stage=stage)
+    if chosen_module == MODULE_CLIMAX_PULLBACK:
+        return _build_climax_pullback_entry_plan(snapshot, stage=stage)
+    if chosen_module == MODULE_CLIMAX_WEAK_TO_STRONG:
+        return _build_climax_w2s_entry_plan(snapshot, stage=stage)
     return None
 
 
-def _build_breakout_entry_plan(snapshot: StockSetupSnapshot) -> Optional[EntryPlanResult]:
-    highs = [value for value in (snapshot.platform_high, snapshot.prev_high, snapshot.high, snapshot.close) if value > 0]
+def _build_breakout_entry_plan(snapshot: StockSetupSnapshot, *, stage: str = STAGE_TREND) -> Optional[EntryPlanResult]:
+    highs = [value for value in (snapshot.platform_high, snapshot.prev_high, snapshot.high) if value > 0]
     lows = [value for value in (snapshot.platform_low, snapshot.low, snapshot.ma20) if value > 0]
     if not highs or not lows:
         return None
     trigger_price = max(highs)
-    entry_price = trigger_price
-    stop_price = min(lows) * 0.995
+    entry_price = trigger_price * 1.001
+    stop_price = _apply_capped_stop(entry_price=entry_price, structural_stop=min(lows) * 0.995, cap_pct=0.08)
     stop_price = _normalize_stop(entry_price, stop_price)
     return EntryPlanResult(
         module=MODULE_BREAKOUT,
@@ -413,7 +538,7 @@ def _build_breakout_entry_plan(snapshot: StockSetupSnapshot) -> Optional[EntryPl
     )
 
 
-def _build_pullback_entry_plan(snapshot: StockSetupSnapshot) -> Optional[EntryPlanResult]:
+def _build_pullback_entry_plan(snapshot: StockSetupSnapshot, *, stage: str = STAGE_TREND) -> Optional[EntryPlanResult]:
     if snapshot.rebound_break_prev_high and snapshot.prev_high > 0:
         trigger_price = max(snapshot.prev_high, snapshot.high, snapshot.close)
     else:
@@ -428,7 +553,7 @@ def _build_pullback_entry_plan(snapshot: StockSetupSnapshot) -> Optional[EntryPl
     if trigger_price <= 0 or not stop_candidates:
         return None
 
-    stop_price = min(stop_candidates) * 0.995
+    stop_price = _apply_capped_stop(entry_price=trigger_price, structural_stop=min(stop_candidates) * 0.995, cap_pct=0.06)
     stop_price = _normalize_stop(trigger_price, stop_price)
     return EntryPlanResult(
         module=MODULE_PULLBACK,
@@ -439,17 +564,34 @@ def _build_pullback_entry_plan(snapshot: StockSetupSnapshot) -> Optional[EntryPl
     )
 
 
-def _build_late_w2s_entry_plan(snapshot: StockSetupSnapshot) -> Optional[EntryPlanResult]:
-    highs = [value for value in (snapshot.close, snapshot.ma5, snapshot.prev_high if snapshot.close_above_prev_high else 0.0) if value > 0]
+def _build_climax_pullback_entry_plan(snapshot: StockSetupSnapshot, *, stage: str = STAGE_CLIMAX) -> Optional[EntryPlanResult]:
+    highs = [value for value in (snapshot.ma5, snapshot.ma10, snapshot.high) if value > 0]
+    lows = [value for value in (snapshot.ma5, snapshot.ma10, snapshot.low) if value > 0]
+    if not highs or not lows:
+        return None
+    trigger_price = max(highs)
+    stop_price = _apply_capped_stop(entry_price=trigger_price, structural_stop=min(lows) * 0.995, cap_pct=0.05)
+    stop_price = _normalize_stop(trigger_price, stop_price)
+    return EntryPlanResult(
+        module=MODULE_CLIMAX_PULLBACK,
+        planned_entry_price=round(trigger_price, 4),
+        initial_stop_price=round(stop_price, 4),
+        trigger_price=round(trigger_price, 4),
+        stop_reference="ma5_or_ma10_or_pullback_low",
+    )
+
+
+def _build_climax_w2s_entry_plan(snapshot: StockSetupSnapshot, *, stage: str = STAGE_CLIMAX) -> Optional[EntryPlanResult]:
+    highs = [value for value in (snapshot.prev_high, snapshot.high, snapshot.close) if value > 0]
     lows = [value for value in (snapshot.ma5, snapshot.low) if value > 0]
     if not highs or not lows:
         return None
 
     trigger_price = max(highs)
-    stop_price = min(lows) * 0.995
+    stop_price = _apply_capped_stop(entry_price=trigger_price, structural_stop=min(lows) * 0.995, cap_pct=0.05)
     stop_price = _normalize_stop(trigger_price, stop_price)
     return EntryPlanResult(
-        module=MODULE_LATE_WEAK_TO_STRONG,
+        module=MODULE_CLIMAX_WEAK_TO_STRONG,
         planned_entry_price=round(trigger_price, 4),
         initial_stop_price=round(stop_price, 4),
         trigger_price=round(trigger_price, 4),
@@ -465,3 +607,76 @@ def _normalize_stop(entry_price: float, stop_price: float) -> float:
     if stop_price >= entry_price:
         return entry_price * 0.97
     return stop_price
+
+
+def _apply_capped_stop(*, entry_price: float, structural_stop: float, cap_pct: float) -> float:
+    """Choose the closer stop between structural level and module cap."""
+    if entry_price <= 0:
+        return max(structural_stop, 0.0)
+    cap_stop = entry_price * (1.0 - max(cap_pct, 0.0))
+    return max(structural_stop, cap_stop)
+
+
+def _resolve_platform_days(snapshot: StockSetupSnapshot) -> int:
+    """Resolve platform days with backward-compatible proxies when raw field is unavailable."""
+    if snapshot.platform_days > 0:
+        return int(snapshot.platform_days)
+    ratio_days = int(round(snapshot.close_above_ma20_ratio * 10))
+    if ratio_days > 0:
+        return ratio_days
+    if snapshot.platform_width_pct <= 12.0 and snapshot.close_above_ma20_ratio >= 0.80:
+        # Backward-compatible proxy for old payloads without explicit platform_days.
+        return 5
+    return 0
+
+
+def _has_prior_breakout_evidence(snapshot: StockSetupSnapshot) -> bool:
+    """Check prior-breakout evidence with explicit field first, then robust proxies."""
+    if snapshot.prior_breakout_count_20d > 0:
+        return True
+    # Fallback proxies for older feature payloads.
+    return (
+        snapshot.ret20 >= 12.0
+        and snapshot.close_above_ma20_ratio >= 0.85
+        and snapshot.prev_high > 0
+    )
+
+
+def _passes_breakout_quality_gate(snapshot: StockSetupSnapshot) -> bool:
+    """Filter low-quality breakouts: avoid overextension and stale repeated breakouts."""
+    if snapshot.close_vs_ma5_pct > 6.0:
+        return False
+    if snapshot.prior_breakout_count_20d > 1:
+        return False
+    return True
+
+
+def compute_fund_flow_score(
+    main_net_inflow_5d: float,
+    main_net_inflow_pct: float,
+    turnover_rate: float,
+    entry_module: str,
+) -> float:
+    """Compute fund flow factor score (0~3 points).
+
+    Scoring rules:
+    - Same-day main net inflow > 0: +1 point
+    - 5-day cumulative net inflow > 0: +1 point
+    - Net inflow / turnover ratio > 0.5: +1 point (bonus)
+    """
+    if entry_module not in ("BREAKOUT", "PULLBACK", "CLIMAX_PULLBACK", "CLIMAX_WEAK_TO_STRONG"):
+        return 0.0
+
+    score = 0.0
+
+    if main_net_inflow_pct > 0:
+        score += 1.0
+
+    if main_net_inflow_5d > 0:
+        score += 1.0
+        if turnover_rate > 0:
+            ratio = abs(main_net_inflow_5d) / turnover_rate
+            if ratio > 0.5:
+                score += 1.0
+
+    return min(score, 3.0)

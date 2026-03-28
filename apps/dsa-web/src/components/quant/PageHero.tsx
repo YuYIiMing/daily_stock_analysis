@@ -68,7 +68,7 @@ export const PageHero: React.FC<PageHeroProps> = ({
         运行结构化回测
       </Button>
       <span className="text-xs text-content-tertiary">
-        主板 + 概念板块主判定 + 三模块入场
+        主板 + 概念板块主判定 + 四模块入场
       </span>
     </div>
   </Card>

@@ -302,6 +302,14 @@ class QuantDataService:
         summary["board_feature_build"] = build_summary.get("board_feature_build", {})
         summary["stock_feature_build"] = build_summary.get("stock_feature_build", {})
         summary["errors"].extend(build_summary.get("errors", []))
+        
+        fund_flow_summary = self.sync_fund_flow(
+            stock_codes=pool,
+            trade_date=snapshot_date,
+            lookback_days=5,
+        )
+        summary["fund_flow_sync"] = fund_flow_summary
+        
         return summary
 
     def sync_stock_directory(self) -> Dict[str, Any]:
@@ -2934,9 +2942,15 @@ class QuantDataService:
                 close=float(row.close),
                 low=float(row.low),
                 ma5=float(row.ma5),
+                ma10=self._safe_float(getattr(row, "ma10", 0.0), 0.0),
                 ma20=float(row.ma20),
                 ma60=float(row.ma60),
                 platform_low_prev=float(row.platform_low_prev) if pd.notna(row.platform_low_prev) else None,
+                pullback_low=(
+                    float(getattr(row, "prev_low"))
+                    if pd.notna(getattr(row, "prev_low", None))
+                    else float(row.low)
+                ),
             )
             score = self._compute_signal_score(
                 eligible=eligible,
@@ -2979,6 +2993,28 @@ class QuantDataService:
                 "platform_low": float(row.platform_low_prev) if pd.notna(row.platform_low_prev) else float(row.low),
                 "prev_high": float(row.prev_high) if pd.notna(row.prev_high) else float(row.high),
                 "prev_low": float(row.prev_low) if pd.notna(row.prev_low) else float(row.low),
+                "signal_low": float(row.low),
+                "pullback_low": float(row.prev_low) if pd.notna(row.prev_low) else float(row.low),
+                "close": float(row.close),
+                "ma5": float(row.ma5),
+                "ma10": self._safe_float(getattr(row, "ma10", 0.0), 0.0),
+                "ma20": float(row.ma20),
+                "ma60": float(row.ma60),
+                "amount_5d": self._safe_float(getattr(row, "amount_5d", 0.0), 0.0),
+                "breakout_count_3d": self._safe_int(getattr(row, "breakout_count_3d", 0), 0),
+                "consecutive_new_high_3d": self._safe_int(getattr(row, "consecutive_new_high_3d", 0), 0),
+                "return_2d": self._safe_float(getattr(row, "return_2d", 0.0), 0.0),
+                "close_above_ma10": bool(getattr(row, "close_above_ma10", False)),
+                "low_above_ma20": bool(getattr(row, "low_above_ma20", False)),
+                "pullback_volume_ratio": self._safe_float(getattr(row, "pullback_volume_ratio", 1.0), 1.0),
+                "single_day_drop_pct": self._safe_float(getattr(row, "single_day_drop_pct", 0.0), 0.0),
+                "broke_ma10_with_volume": bool(getattr(row, "broke_ma10_with_volume", False)),
+                "broke_ma20": bool(getattr(row, "broke_ma20", False)),
+                "is_limit_down": bool(getattr(row, "is_limit_down", False)),
+                "close_to_5d_high_drawdown_pct": self._safe_float(
+                    getattr(row, "close_to_5d_high_drawdown_pct", 0.0),
+                    0.0,
+                ),
                 "initial_stop_price": float(initial_stop),
             }
             records.append(
@@ -3013,23 +3049,49 @@ class QuantDataService:
         close: float,
         low: float,
         ma5: float,
+        ma10: float,
         ma20: float,
         ma60: float,
         platform_low_prev: Optional[float],
+        pullback_low: Optional[float],
     ) -> float:
-        """Compute module-aware initial stop level for plan generation."""
-        if module == "BREAKOUT":
-            base = min(value for value in [platform_low_prev or ma20, low, ma20] if value and value > 0)
-        elif module == "PULLBACK":
-            candidates = [value for value in [ma20, ma60, low] if value and value > 0]
-            base = min(candidates) if candidates else max(close * 0.95, 0.01)
-        elif module == "LATE_WEAK_TO_STRONG":
-            candidates = [value for value in [ma5, low] if value and value > 0]
-            base = min(candidates) if candidates else max(close * 0.96, 0.01)
+        """Compute module-aware initial stop using structural levels plus fixed stop-width caps."""
+        normalized_module = str(module or "").upper()
+        if normalized_module == "LATE_WEAK_TO_STRONG":
+            normalized_module = "CLIMAX_WEAK_TO_STRONG"
+        if normalized_module == "LATE_PULLBACK":
+            normalized_module = "CLIMAX_PULLBACK"
+
+        def positive(values: Sequence[Optional[float]]) -> List[float]:
+            return [float(value) for value in values if value is not None and float(value) > 0]
+
+        if normalized_module == "BREAKOUT":
+            structural_candidates = positive([platform_low_prev, low, ma20])
+            cap_pct = 0.08
+        elif normalized_module == "PULLBACK":
+            structural_candidates = positive([ma20, ma60, low])
+            cap_pct = 0.06
+        elif normalized_module == "CLIMAX_PULLBACK":
+            structural_candidates = positive([ma5, ma10, pullback_low, low])
+            cap_pct = 0.05
+        elif normalized_module == "CLIMAX_WEAK_TO_STRONG":
+            structural_candidates = positive([ma5, low])
+            cap_pct = 0.05
         else:
-            candidates = [value for value in [ma20, low] if value and value > 0]
-            base = min(candidates) if candidates else max(close * 0.95, 0.01)
-        return round(max(base * 0.995, 0.01), 3)
+            structural_candidates = positive([ma20, ma60, low])
+            cap_pct = 0.06
+
+        if close <= 0:
+            fallback = structural_candidates[0] if structural_candidates else 0.01
+            return round(max(float(fallback), 0.01), 3)
+
+        structural_stop = min(structural_candidates) if structural_candidates else close * (1.0 - cap_pct)
+        fixed_cap_stop = close * (1.0 - cap_pct)
+        final_stop = max(structural_stop, fixed_cap_stop)
+
+        if final_stop >= close:
+            final_stop = fixed_cap_stop
+        return round(max(final_stop, 0.01), 3)
 
     @staticmethod
     def _compute_signal_score(
@@ -3052,3 +3114,81 @@ class QuantDataService:
         if module:
             score += 10.0
         return round(max(min(score, 100.0), 0.0), 2)
+
+    def sync_fund_flow(
+        self,
+        stock_codes: Optional[Sequence[str]] = None,
+        trade_date: Optional[date] = None,
+        lookback_days: int = 5,
+    ) -> Dict[str, Any]:
+        """Synchronize fund flow data for stock candidates."""
+        summary: Dict[str, Any] = {
+            "requested": 0,
+            "saved": 0,
+            "errors": [],
+            "skipped": False,
+        }
+        
+        if self.db is None:
+            summary["skipped"] = True
+            summary["errors"].append("Database manager is required for sync_fund_flow.")
+            return summary
+        
+        try:
+            from data_provider.fund_flow_fetcher import FundFlowFetcher
+            from src.repositories.stock_fund_flow_repo import StockFundFlowRepository
+            from src.storage import StockFundFlowDaily
+        except ImportError as e:
+            summary["skipped"] = True
+            summary["errors"].append(f"Fund flow dependencies not available: {e}")
+            return summary
+        
+        fetcher = FundFlowFetcher()
+        repo = StockFundFlowRepository(self.db)
+        
+        if trade_date is None:
+            trade_date = date.today()
+        
+        pool = list(stock_codes) if stock_codes else []
+        if not pool:
+            pool = self._resolve_default_stock_pool()
+        
+        if not pool:
+            summary["skipped"] = True
+            summary["errors"].append("No stock codes provided for fund flow sync.")
+            return summary
+        
+        summary["requested"] = len(pool)
+        saved = 0
+        
+        for code in pool:
+            try:
+                records = fetcher.fetch_single_stock(code, lookback_days=lookback_days + 10)
+                if records:
+                    db_records = []
+                    for r in records:
+                        db_records.append(StockFundFlowDaily(
+                            trade_date=r.trade_date,
+                            code=r.code,
+                            close=r.close,
+                            pct_chg=r.pct_chg,
+                            main_net_inflow=r.main_net_inflow,
+                            main_net_inflow_pct=r.main_net_inflow_pct,
+                            super_large_net=r.super_large_net,
+                            super_large_pct=r.super_large_pct,
+                            large_net=r.large_net,
+                            large_pct=r.large_pct,
+                            medium_net=r.medium_net,
+                            medium_pct=r.medium_pct,
+                            small_net=r.small_net,
+                            small_pct=r.small_pct,
+                            turnover_rate=r.turnover_rate,
+                        ))
+                    repo.upsert_batch(db_records)
+                    saved += len(db_records)
+            except Exception as e:
+                logger.debug(f"[FundFlow] Skip {code}: {e}")
+                continue
+        
+        summary["saved"] = saved
+        return summary

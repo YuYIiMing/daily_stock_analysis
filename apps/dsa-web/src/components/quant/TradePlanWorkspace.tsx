@@ -14,7 +14,7 @@ interface TradePlanWorkspaceProps {
 function moduleTone(module: string): 'aurora' | 'nebula' | 'warning' | 'default' {
   if (module === 'BREAKOUT') return 'aurora';
   if (module === 'PULLBACK') return 'nebula';
-  if (module === 'LATE_WEAK_TO_STRONG') return 'warning';
+  if (module === 'CLIMAX_PULLBACK' || module === 'CLIMAX_WEAK_TO_STRONG' || module === 'LATE_WEAK_TO_STRONG') return 'warning';
   return 'default';
 }
 
@@ -28,7 +28,7 @@ function stageTone(stage: string): 'success' | 'warning' | 'danger' | 'default' 
 function getPrimaryBlockerLabel(primaryBlocker?: string | null): string {
   if (primaryBlocker === 'candidates_ready') return '已有候选';
   if (primaryBlocker === 'stock_setup_not_ready') return '个股形态未触发';
-  if (primaryBlocker === 'late_stage_no_trade') return '后期默认不做';
+  if (primaryBlocker === 'late_stage_no_trade') return '后期入场未触发';
   if (primaryBlocker === 'board_feature_gap') return '板块特征有缺口';
   if (primaryBlocker === 'board_stage_and_feature_gap') return '阶段未到位且有缺口';
   if (primaryBlocker === 'board_stage_not_ready') return '板块阶段未到位';
@@ -72,7 +72,8 @@ export const TradePlanWorkspace: React.FC<TradePlanWorkspaceProps> = ({
   const climaxCount = getStageCount(planDiagnostics?.stageReadyDistribution, 'CLIMAX');
   const trendCount = getStageCount(planDiagnostics?.stageReadyDistribution, 'TREND');
   const emergingCount = getStageCount(planDiagnostics?.stageReadyDistribution, 'EMERGING');
-  const climaxBlocked = getBlockerCount(planDiagnostics?.setupBlockerCounts, 'climax_no_trigger');
+  const climaxBlocked = getBlockerCount(planDiagnostics?.setupBlockerCounts, 'climax_setup_not_ready')
+    || getBlockerCount(planDiagnostics?.setupBlockerCounts, 'climax_no_trigger');
   const trendBlocked = getBlockerCount(planDiagnostics?.setupBlockerCounts, 'trend_setup_not_ready');
   const emergingBlocked = getBlockerCount(planDiagnostics?.setupBlockerCounts, 'emerging_setup_not_ready');
 
@@ -144,10 +145,10 @@ export const TradePlanWorkspace: React.FC<TradePlanWorkspaceProps> = ({
                   <div className="rounded-xl border border-white/8 bg-black/10 p-4">
                     <p className="text-xs font-semibold text-content-primary">个股买点卡点</p>
                     <p className="mt-2 text-sm text-content-secondary">
-                      后期默认不做 {climaxBlocked} 只；中期形态未成 {trendBlocked} 只；初期形态未成 {emergingBlocked} 只。
+                      后期入场未触发 {climaxBlocked} 只；中期形态未成 {trendBlocked} 只；初期形态未成 {emergingBlocked} 只。
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {climaxBlocked > 0 ? <Badge variant="warning">后期默认不做 {climaxBlocked}</Badge> : null}
+                      {climaxBlocked > 0 ? <Badge variant="warning">后期入场未触发 {climaxBlocked}</Badge> : null}
                       {trendBlocked > 0 ? <Badge variant="default">中期形态未成 {trendBlocked}</Badge> : null}
                       {emergingBlocked > 0 ? <Badge variant="default">初期形态未成 {emergingBlocked}</Badge> : null}
                     </div>

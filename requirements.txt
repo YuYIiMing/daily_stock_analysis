@@ -6,7 +6,8 @@
 python-dotenv>=1.0.0        # 环境变量配置管理
 tenacity>=8.2.0             # 重试机制（指数退避）
 sqlalchemy>=2.0.0           # ORM数据库操作
-pysqlite3-binary>=0.5.4; platform_system == "Linux"  # Newer SQLite runtime for Linux containers
+# pysqlite3-binary 在 ARM 架构上不可用，使用 Python 内置 SQLite
+# pysqlite3-binary>=0.5.4; platform_system == "Linux" and platform_machine != "aarch64"
 schedule>=1.2.0             # 定时任务调度
 exchange-calendars>=4.5.0   # 交易日历（A股/港股/美股，Issue #373）
 
