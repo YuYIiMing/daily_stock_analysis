@@ -2,10 +2,14 @@ import apiClient from './index';
 import { createParsedApiError, getParsedApiError, type ParsedApiError } from './error';
 import { toCamelCase } from './utils';
 import type {
+  ExportSystemConfigResponse,
+  ImportSystemConfigRequest,
   SystemConfigConflictResponse,
   SystemConfigResponse,
   SystemConfigSchemaResponse,
   SystemConfigValidationErrorResponse,
+  TestLLMChannelRequest,
+  TestLLMChannelResponse,
   UpdateSystemConfigRequest,
   UpdateSystemConfigResponse,
   ValidateSystemConfigRequest,
@@ -69,12 +73,37 @@ function toSnakeValidatePayload(payload: ValidateSystemConfigRequest): Record<st
   };
 }
 
+function toSnakeImportPayload(payload: ImportSystemConfigRequest): Record<string, unknown> {
+  return {
+    config_version: payload.configVersion,
+    content: payload.content,
+    reload_now: payload.reloadNow ?? true,
+  };
+}
+
+function toSnakeTestChannelPayload(payload: TestLLMChannelRequest): Record<string, unknown> {
+  return {
+    name: payload.name,
+    protocol: payload.protocol,
+    base_url: payload.baseUrl ?? '',
+    api_key: payload.apiKey ?? '',
+    models: payload.models,
+    enabled: payload.enabled ?? true,
+    timeout_seconds: payload.timeoutSeconds ?? 20,
+  };
+}
+
 export const systemConfigApi = {
   async getConfig(includeSchema = true): Promise<SystemConfigResponse> {
     const response = await apiClient.get<Record<string, unknown>>('/api/v1/system/config', {
       params: { include_schema: includeSchema },
     });
     return toCamelCase<SystemConfigResponse>(response.data);
+  },
+
+  async exportDesktopEnv(): Promise<ExportSystemConfigResponse> {
+    const response = await apiClient.get<Record<string, unknown>>('/api/v1/system/config/export');
+    return toCamelCase<ExportSystemConfigResponse>(response.data);
   },
 
   async getSchema(): Promise<SystemConfigSchemaResponse> {
@@ -88,6 +117,22 @@ export const systemConfigApi = {
       toSnakeValidatePayload(payload),
     );
     return toCamelCase<ValidateSystemConfigResponse>(response.data);
+  },
+
+  async importDesktopEnv(payload: ImportSystemConfigRequest): Promise<UpdateSystemConfigResponse> {
+    const response = await apiClient.post<Record<string, unknown>>(
+      '/api/v1/system/config/import',
+      toSnakeImportPayload(payload),
+    );
+    return toCamelCase<UpdateSystemConfigResponse>(response.data);
+  },
+
+  async testLLMChannel(payload: TestLLMChannelRequest): Promise<TestLLMChannelResponse> {
+    const response = await apiClient.post<Record<string, unknown>>(
+      '/api/v1/system/config/llm/test-channel',
+      toSnakeTestChannelPayload(payload),
+    );
+    return toCamelCase<TestLLMChannelResponse>(response.data);
   },
 
   async update(payload: UpdateSystemConfigRequest): Promise<UpdateSystemConfigResponse> {
